@@ -1197,49 +1197,66 @@ async def ubisoft_setup_verify(payload: dict):
 async def ubisoft_debug(username: str):
     """
     Probe candidate Ubisoft achievement/name endpoints for a username's first
-    couple of games, so we can find the ones that return real data.
+    couple of games. Reports errors as JSON at each stage instead of 500ing.
     """
     from app.ubisoft_auth import get_service_ticket, resolve_username, session_headers
 
-    ticket = await get_service_ticket()
-    headers = session_headers(ticket)
     base = "https://public-ubiservices.ubi.com"
+    out: dict = {"stage": "start"}
 
-    async with httpx.AsyncClient(timeout=30) as client:
-        profile_id = await resolve_username(client, headers, username)
+    try:
+        out["stage"] = "get_service_ticket"
+        ticket = await get_service_ticket()
+        headers = session_headers(ticket)
 
-        gp = await client.get(
-            f"{base}/v1/profiles/{profile_id}/gamesplayed",
-            params={"spaceIds": "", "spacePlatformTypes": "", "applicationPlatformTypes": ""},
-            headers=headers,
-        )
-        games = (gp.json().get("gamesPlayed") if gp.status_code == 200 else []) or []
-        spaces = [g.get("spaceId") for g in games[:2] if g.get("spaceId")]
+        async with httpx.AsyncClient(timeout=30) as client:
+            out["stage"] = "resolve_username"
+            profile_id = await resolve_username(client, headers, username)
+            out["profile_id"] = profile_id
 
-        async def probe(url: str, params: dict | None = None):
-            try:
-                r = await client.get(f"{base}{url}", params=params or {}, headers=headers)
-                body = r.text[:600]
-                return {"url": url, "params": params, "status": r.status_code, "body": body}
-            except Exception as e:
-                return {"url": url, "params": params, "error": str(e)}
+            out["stage"] = "gamesplayed"
+            gp = await client.get(
+                f"{base}/v1/profiles/{profile_id}/gamesplayed",
+                params={"spaceIds": "", "spacePlatformTypes": "", "applicationPlatformTypes": ""},
+                headers=headers,
+            )
+            out["gamesplayed_status"] = gp.status_code
+            if gp.status_code != 200:
+                out["gamesplayed_body"] = gp.text[:400]
+                return out
+            games = gp.json().get("gamesPlayed") or []
+            out["total_games"] = len(games)
+            spaces = [g.get("spaceId") for g in games[:2] if g.get("spaceId")]
+            out["spaces_probed"] = spaces
 
-        results = []
-        for sid in spaces:
-            candidates = [
-                (f"/v1/profiles/{profile_id}/achievements", {"spaceIds": sid, "populationId": "uplay"}),
-                (f"/v1/profiles/{profile_id}/achievements", {"spaceId": sid}),
-                (f"/v3/profiles/{profile_id}/achievements", {"spaceIds": sid}),
-                (f"/v1/spaces/{sid}/achievements", None),
-                (f"/v1/spaces/{sid}/achievements/actions", None),
-                (f"/v1/profiles/{profile_id}/spaces/{sid}/achievements", None),
-                (f"/v1/spaces/{sid}", None),
-                (f"/v2/spaces/{sid}", None),
-            ]
-            for url, params in candidates:
-                results.append(await probe(url, params))
+            async def probe(url: str, params: dict | None = None):
+                try:
+                    r = await client.get(f"{base}{url}", params=params or {}, headers=headers)
+                    return {"url": url, "params": params, "status": r.status_code, "body": r.text[:600]}
+                except Exception as e:
+                    return {"url": url, "params": params, "error": str(e)}
 
-    return {"profile_id": profile_id, "spaces_probed": spaces, "total_games": len(games), "results": results}
+            results = []
+            for sid in spaces:
+                for url, params in [
+                    (f"/v1/profiles/{profile_id}/achievements", {"spaceIds": sid, "populationId": "uplay"}),
+                    (f"/v1/profiles/{profile_id}/achievements", {"spaceId": sid}),
+                    (f"/v3/profiles/{profile_id}/achievements", {"spaceIds": sid}),
+                    (f"/v1/spaces/{sid}/achievements", None),
+                    (f"/v1/spaces/{sid}/achievements/actions", None),
+                    (f"/v1/profiles/{profile_id}/spaces/{sid}/achievements", None),
+                    (f"/v1/spaces/{sid}", None),
+                    (f"/v2/spaces/{sid}", None),
+                ]:
+                    results.append(await probe(url, params))
+            out["results"] = results
+            out["stage"] = "done"
+        return out
+    except Exception as e:
+        import traceback
+        out["error"] = str(e)
+        out["traceback"] = traceback.format_exc()[-800:]
+        return out
 
 
 @app.get("/api/ubisoft-service-status")
