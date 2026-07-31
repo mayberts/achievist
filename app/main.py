@@ -1359,9 +1359,17 @@ async def exophase_debug():
     }
 
 
+import os
+
+# Serve the built React SPA from app/webdist (produced by `vite build`).
+# Falls back to the legacy static dir if the build output isn't present.
+_WEB_DIR = "app/webdist" if os.path.isdir("app/webdist") else "app/static"
+_INDEX = os.path.join(_WEB_DIR, "index.html")
+
+
 @app.get("/{full_path:path}", include_in_schema=False)
 async def spa_fallback(full_path: str):
-    return FileResponse("app/static/index.html")
+    return FileResponse(_INDEX)
 
 
-app.mount("/", StaticFiles(directory="app/static", html=True), name="static")
+app.mount("/", StaticFiles(directory=_WEB_DIR, html=True), name="static")
