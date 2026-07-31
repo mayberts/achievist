@@ -3,6 +3,7 @@ from pathlib import Path
 
 from psycopg_pool import AsyncConnectionPool
 from psycopg.rows import dict_row
+from psycopg.types.json import Jsonb
 
 from app import config
 
@@ -53,6 +54,79 @@ async def upsert_linked_account(conn, platform: str, external_id: str) -> int:
         platform, external_id, external_id,
     )
     return row["id"]
+
+
+# ── Connected-account management ─────────────────────────────────────────────
+
+async def list_accounts(conn) -> list[dict]:
+    """Return all connected accounts with their credentials and status."""
+    return await _fetch(
+        conn,
+        """
+        SELECT id, platform, external_id, display_name, enabled,
+               credentials, status, last_error, last_synced_at, created_at
+        FROM linked_accounts
+        ORDER BY platform, id
+        """,
+    )
+
+
+async def get_account(conn, account_id: int) -> dict | None:
+    return await _fetchrow(
+        conn,
+        """
+        SELECT id, platform, external_id, display_name, enabled,
+               credentials, status, last_error, last_synced_at, created_at
+        FROM linked_accounts WHERE id = %s
+        """,
+        account_id,
+    )
+
+
+async def upsert_account(conn, platform: str, external_id: str,
+                         credentials: dict, display_name: str | None = None) -> int:
+    """Create or update a connected account, storing credentials as JSONB."""
+    row = await _fetchrow(
+        conn,
+        """
+        INSERT INTO linked_accounts (platform, external_id, display_name, credentials, enabled, status)
+        VALUES (%s, %s, %s, %s, TRUE, 'connected')
+        ON CONFLICT (platform, external_id) DO UPDATE
+            SET display_name = COALESCE(EXCLUDED.display_name, linked_accounts.display_name),
+                credentials  = EXCLUDED.credentials,
+                enabled      = TRUE,
+                status       = 'connected',
+                last_error   = NULL
+        RETURNING id
+        """,
+        platform, external_id, display_name or external_id, Jsonb(credentials),
+    )
+    return row["id"]
+
+
+async def set_account_status(conn, account_id: int, status: str,
+                             last_error: str | None = None) -> None:
+    await conn.execute(
+        """
+        UPDATE linked_accounts
+           SET status = %s, last_error = %s,
+               last_synced_at = CASE WHEN %s = 'connected' THEN now() ELSE last_synced_at END
+         WHERE id = %s
+        """,
+        (status, last_error, status, account_id),
+    )
+
+
+async def delete_account(conn, account_id: int) -> None:
+    """Remove a connected account and its synced data (FK cascade handles children)."""
+    await conn.execute("DELETE FROM linked_accounts WHERE id = %s", (account_id,))
+
+
+async def account_exists(conn, platform: str) -> bool:
+    row = await _fetchrow(
+        conn, "SELECT 1 AS x FROM linked_accounts WHERE platform = %s LIMIT 1", platform
+    )
+    return row is not None
 
 
 async def upsert_platform_game(conn, platform: str, platform_app_id: str, name: str,

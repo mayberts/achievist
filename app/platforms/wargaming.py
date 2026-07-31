@@ -42,10 +42,21 @@ _GAMES = {
 
 
 class WargamingPlatform(Platform):
+    KEY = "wargaming"
+    LABEL = "Wargaming"
+    CONNECT_FIELDS = [
+        {"name": "external_id", "label": "Nickname or Account ID", "type": "text", "required": True,
+         "help": "Your Wargaming nickname (or numeric account ID)."},
+        {"name": "app_id", "label": "Application ID", "type": "password", "required": True, "secret": True,
+         "help": "Register an app at developers.wargaming.net"},
+        {"name": "region", "label": "Region", "type": "select", "required": True,
+         "options": ["eu", "na", "asia"], "help": "Your Wargaming server region."},
+    ]
+
     async def sync(self, account: dict, conn) -> None:
-        app_id = config.WARGAMING_APP_ID
-        nickname = config.WARGAMING_NICKNAME
-        region = (config.WARGAMING_REGION or "eu").lower()
+        app_id = self.cred(account, "app_id", config.WARGAMING_APP_ID)
+        nickname = account["external_id"] or config.WARGAMING_NICKNAME
+        region = (self.cred(account, "region", config.WARGAMING_REGION) or "eu").lower()
         delay = config.REQUEST_DELAY_SECONDS
 
         if not app_id or not nickname:

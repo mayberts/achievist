@@ -14,10 +14,19 @@ _SPACE_BASE = "https://public-ubiservices.ubi.com"
 
 
 class UbisoftPlatform(Platform):
+    KEY = "ubisoft"
+    LABEL = "Ubisoft Connect"
+    EXTERNAL_ID = "ubisoft"
+    CONNECT_FIELDS = [
+        {"name": "session_ticket", "label": "Session Ticket", "type": "password", "required": True, "secret": True,
+         "help": "From connect.ubisoft.com → DevTools → Application → Local Storage → the ticket value "
+                 "(the long 'ewog…' string). Note: expires after a few hours."},
+    ]
+
     async def sync(self, account: dict, conn) -> None:
         delay = config.REQUEST_DELAY_SECONDS
 
-        ticket, profile_id = await refresh_session()
+        ticket, profile_id = await refresh_session(self.cred(account, "session_ticket"))
         if not ticket or not profile_id:
             raise RuntimeError("Ubisoft session refresh returned empty credentials")
 

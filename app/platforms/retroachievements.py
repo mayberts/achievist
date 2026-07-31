@@ -10,11 +10,23 @@ _BASE = "https://retroachievements.org/API"
 
 
 class RetroAchievementsPlatform(Platform):
+    KEY = "retroachievements"
+    LABEL = "RetroAchievements"
+    CONNECT_FIELDS = [
+        {"name": "username", "label": "Your RA Username", "type": "text", "required": True,
+         "help": "The account whose API key you're using."},
+        {"name": "api_key", "label": "API Key", "type": "password", "required": True, "secret": True,
+         "help": "Settings → Keys on retroachievements.org"},
+        {"name": "external_id", "label": "Target User", "type": "text", "required": False,
+         "help": "Whose record to pull. Leave blank to use your own username."},
+    ]
+
     async def sync(self, account: dict, conn) -> None:
-        username = account["external_id"]
-        key = config.RA_API_KEY
+        ra_user = self.cred(account, "username", config.RA_USERNAME)
+        username = account["external_id"] or ra_user
+        key = self.cred(account, "api_key", config.RA_API_KEY)
         delay = config.REQUEST_DELAY_SECONDS
-        auth = {"z": config.RA_USERNAME, "y": key}
+        auth = {"z": ra_user, "y": key}
 
         linked_id = await db.upsert_linked_account(conn, "retroachievements", username)
         earned_cache = await db.get_earned_counts(conn, linked_id)

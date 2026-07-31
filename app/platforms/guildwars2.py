@@ -15,8 +15,16 @@ _GAME_ICON = "https://render.guildwars2.com/file/AB3E265F96FFAA25B9F0909B44CEAF7
 
 
 class GuildWars2Platform(Platform):
+    KEY = "guildwars2"
+    LABEL = "Guild Wars 2"
+    EXTERNAL_ID = "gw2"
+    CONNECT_FIELDS = [
+        {"name": "api_key", "label": "API Key", "type": "password", "required": True, "secret": True,
+         "help": "Generate at account.arena.net/applications with the 'progression' scope."},
+    ]
+
     async def sync(self, account: dict, conn) -> None:
-        api_key = config.GW2_API_KEY
+        api_key = self.cred(account, "api_key", config.GW2_API_KEY)
         delay = config.REQUEST_DELAY_SECONDS
 
         if not api_key:

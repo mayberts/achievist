@@ -7,10 +7,17 @@ CREATE TABLE IF NOT EXISTS linked_accounts (
     external_id     TEXT NOT NULL,          -- steamid64, RA username, psn account id, etc.
     display_name    TEXT,
     enabled         BOOLEAN DEFAULT TRUE,
+    credentials     JSONB NOT NULL DEFAULT '{}'::jsonb,  -- per-account secrets/config (api keys, tokens, region)
+    status          TEXT DEFAULT 'connected',            -- connected | error
+    last_error      TEXT,
     last_synced_at  TIMESTAMPTZ,
     created_at      TIMESTAMPTZ DEFAULT now(),
     UNIQUE (platform, external_id)
 );
+-- safe migrations for existing deployments
+ALTER TABLE linked_accounts ADD COLUMN IF NOT EXISTS credentials JSONB NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE linked_accounts ADD COLUMN IF NOT EXISTS status      TEXT DEFAULT 'connected';
+ALTER TABLE linked_accounts ADD COLUMN IF NOT EXISTS last_error  TEXT;
 
 CREATE TABLE IF NOT EXISTS igdb_games (
     id                  BIGINT PRIMARY KEY,  -- IGDB id
