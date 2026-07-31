@@ -34,6 +34,25 @@ export interface Game {
   last_played_at: string | null;
 }
 
+export interface GameDetail extends Game {
+  hltb_main: number | null;
+  hltb_extra: number | null;
+  hltb_complete: number | null;
+  rarity_summary: { tier: string; cnt: number }[];
+  total_points: number;
+}
+
+export interface Achievement {
+  platform_ach_id: string;
+  name: string | null;
+  description: string | null;
+  icon_url: string | null;
+  points: number | null;
+  rarity_pct: number | null;
+  unlocked: boolean | null;
+  unlocked_at: string | null;
+}
+
 export interface GamesResponse {
   total: number;
   page: number;

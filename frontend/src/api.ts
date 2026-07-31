@@ -1,5 +1,7 @@
 import type {
   Account,
+  Achievement,
+  GameDetail,
   GamesResponse,
   PlatformSchema,
   Summary,
@@ -50,6 +52,9 @@ export const api = {
     });
     return get<GamesResponse>(`/api/games?${params.toString()}`);
   },
+
+  gameDetail: (id: number) => get<GameDetail>(`/api/games/${id}`),
+  gameAchievements: (id: number) => get<Achievement[]>(`/api/games/${id}/achievements`),
 
   platforms: () => get<PlatformSchema[]>("/api/platforms"),
   accounts: () => get<Account[]>("/api/accounts"),
