@@ -166,36 +166,15 @@ function UbisoftFlow({
 }
 
 function UbisoftServiceLogin({ onSignedIn }: { onSignedIn: () => void }) {
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [twoFa, setTwoFa] = useState<{ ticket: string; method?: string } | null>(null);
-  const [code, setCode] = useState("");
+  const [ticket, setTicket] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  async function login() {
+  async function save() {
     setError(null);
     setBusy(true);
     try {
-      const r = await api.ubisoftServiceLogin({ email, password });
-      if (r.status === "2fa_required" && r.two_factor_ticket) {
-        setTwoFa({ ticket: r.two_factor_ticket, method: r.method });
-      } else {
-        onSignedIn();
-      }
-    } catch (e) {
-      setError(String(e instanceof Error ? e.message : e));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function verify() {
-    if (!twoFa) return;
-    setError(null);
-    setBusy(true);
-    try {
-      await api.ubisoftServiceVerify({ ticket: twoFa.ticket, code });
+      await api.ubisoftServiceTicket(ticket.trim());
       onSignedIn();
     } catch (e) {
       setError(String(e instanceof Error ? e.message : e));
@@ -207,61 +186,33 @@ function UbisoftServiceLogin({ onSignedIn }: { onSignedIn: () => void }) {
   return (
     <div className="space-y-3">
       <p className="rounded-lg bg-ink-900 px-3 py-2 text-xs text-muted">
-        Ubisoft needs one backend sign-in so the app can read public profiles by username (this is
-        stored once and reused). Sign in with a Ubisoft account below.
+        Ubisoft blocks server-side password logins, so the app needs one browser session ticket to
+        read public profiles by username. This is stored once and reused; it expires after a few
+        hours, so you'll re-paste it occasionally.
       </p>
-
-      {!twoFa ? (
-        <>
-          <div>
-            <label className="mb-1 block text-sm font-medium text-slate-300">Ubisoft Email</label>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="w-full rounded-lg border border-line bg-ink-900 px-3 py-2 text-sm text-slate-100 outline-none focus:border-accent-soft"
-            />
-          </div>
-          <div>
-            <label className="mb-1 block text-sm font-medium text-slate-300">Password</label>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="w-full rounded-lg border border-line bg-ink-900 px-3 py-2 text-sm text-slate-100 outline-none focus:border-accent-soft"
-            />
-          </div>
-          {error && <p className="rounded-lg bg-red-950/50 px-3 py-2 text-sm text-red-300">{error}</p>}
-          <button
-            onClick={login}
-            disabled={busy || !email || !password}
-            className="w-full rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-accent/90 disabled:opacity-50"
-          >
-            {busy ? "Signing in…" : "Sign in"}
-          </button>
-        </>
-      ) : (
-        <>
-          <div>
-            <label className="mb-1 block text-sm font-medium text-slate-300">
-              Two-factor code {twoFa.method ? `(${twoFa.method})` : ""}
-            </label>
-            <input
-              value={code}
-              onChange={(e) => setCode(e.target.value)}
-              className="w-full rounded-lg border border-line bg-ink-900 px-3 py-2 text-sm tracking-widest text-slate-100 outline-none focus:border-accent-soft"
-            />
-          </div>
-          {error && <p className="rounded-lg bg-red-950/50 px-3 py-2 text-sm text-red-300">{error}</p>}
-          <button
-            onClick={verify}
-            disabled={busy || !code}
-            className="w-full rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-accent/90 disabled:opacity-50"
-          >
-            {busy ? "Verifying…" : "Verify"}
-          </button>
-        </>
-      )}
+      <ol className="list-decimal space-y-1 pl-5 text-xs text-muted">
+        <li>Log in at <span className="text-slate-300">connect.ubisoft.com</span></li>
+        <li>Open DevTools (F12) → <span className="text-slate-300">Application → Local Storage</span></li>
+        <li>Copy the long value that starts with <span className="text-slate-300">ewog…</span></li>
+      </ol>
+      <div>
+        <label className="mb-1 block text-sm font-medium text-slate-300">Session Ticket</label>
+        <textarea
+          value={ticket}
+          onChange={(e) => setTicket(e.target.value)}
+          rows={3}
+          placeholder="ewog…"
+          className="w-full resize-none rounded-lg border border-line bg-ink-900 px-3 py-2 text-xs text-slate-100 outline-none focus:border-accent-soft"
+        />
+      </div>
+      {error && <p className="rounded-lg bg-red-950/50 px-3 py-2 text-sm text-red-300">{error}</p>}
+      <button
+        onClick={save}
+        disabled={busy || !ticket.trim()}
+        className="w-full rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-accent/90 disabled:opacity-50"
+      >
+        {busy ? "Validating…" : "Save session"}
+      </button>
     </div>
   );
 }

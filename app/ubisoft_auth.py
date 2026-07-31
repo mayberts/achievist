@@ -182,6 +182,29 @@ async def _lookup_profile_id(client: httpx.AsyncClient, headers: dict) -> str:
     raise RuntimeError(f"Could not resolve Ubisoft profileId: HTTP {resp.status_code} — {resp.text[:200]}")
 
 
+async def save_service_ticket(ticket: str) -> str:
+    """
+    Validate a browser session ticket and store it as the backend service
+    credential. Returns the service account's profileId. Raises if invalid.
+    """
+    ticket = (ticket or "").strip()
+    if not ticket:
+        raise RuntimeError("No session ticket provided.")
+    # refresh_session validates the ticket (calls /profiles/me for session tickets)
+    validated, profile_id = await refresh_session(ticket)
+    _save_session(validated, ticket)
+    return profile_id
+
+
+async def service_ticket_valid() -> bool:
+    """Live check: is the stored service ticket present and still usable?"""
+    try:
+        await get_service_ticket()
+        return True
+    except Exception:
+        return False
+
+
 async def get_service_ticket() -> str:
     """
     Get a live session ticket for the app's backend Ubisoft service account.
