@@ -1199,15 +1199,25 @@ async def ubisoft_debug(username: str):
     Probe candidate Ubisoft achievement/name endpoints for a username's first
     couple of games. Reports errors as JSON at each stage instead of 500ing.
     """
-    from app.ubisoft_auth import get_service_ticket, resolve_username, session_headers
+    from app.ubisoft_auth import get_service_ticket, resolve_username, session_headers, _base_headers, _sid_from_ticket
 
     base = "https://public-ubiservices.ubi.com"
+    msr = "https://msr-public-ubiservices.ubi.com"
+    web_appid = "74e71609-1ddf-47da-9073-71ac3aa8c90c"
+    club_appid = "86263886-327a-4328-ac69-527f0d20a237"
     out: dict = {"stage": "start"}
 
     try:
         out["stage"] = "get_service_ticket"
         ticket = await get_service_ticket()
         headers = session_headers(ticket)
+
+        def hdr(appid: str) -> dict:
+            h = {**_base_headers(appid), "Authorization": f"Ubi_v1 t={ticket}"}
+            sid = _sid_from_ticket(ticket)
+            if sid:
+                h["Ubi-SessionId"] = sid
+            return h
 
         async with httpx.AsyncClient(timeout=30) as client:
             out["stage"] = "resolve_username"
@@ -1226,29 +1236,29 @@ async def ubisoft_debug(username: str):
                 return out
             games = gp.json().get("gamesPlayed") or []
             out["total_games"] = len(games)
-            spaces = [g.get("spaceId") for g in games[:2] if g.get("spaceId")]
+            spaces = [g.get("spaceId") for g in games[:3] if g.get("spaceId")]
             out["spaces_probed"] = spaces
 
-            async def probe(url: str, params: dict | None = None):
+            async def probe(full_url: str, appid: str, params: dict | None = None):
                 try:
-                    r = await client.get(f"{base}{url}", params=params or {}, headers=headers)
-                    return {"url": url, "params": params, "status": r.status_code, "body": r.text[:600]}
+                    r = await client.get(full_url, params=params or {}, headers=hdr(appid))
+                    return {"url": full_url, "appid": appid, "params": params,
+                            "status": r.status_code, "body": r.text[:700]}
                 except Exception as e:
-                    return {"url": url, "params": params, "error": str(e)}
+                    return {"url": full_url, "appid": appid, "params": params, "error": str(e)}
 
             results = []
+            # profile-wide club actions (player's unlocked achievements)
+            for appid in (club_appid, web_appid):
+                results.append(await probe(f"{msr}/v1/profiles/{profile_id}/club/actions", appid))
             for sid in spaces:
-                for url, params in [
-                    (f"/v1/profiles/{profile_id}/achievements", {"spaceIds": sid, "populationId": "uplay"}),
-                    (f"/v1/profiles/{profile_id}/achievements", {"spaceId": sid}),
-                    (f"/v3/profiles/{profile_id}/achievements", {"spaceIds": sid}),
-                    (f"/v1/spaces/{sid}/achievements", None),
-                    (f"/v1/spaces/{sid}/achievements/actions", None),
-                    (f"/v1/profiles/{profile_id}/spaces/{sid}/achievements", None),
-                    (f"/v1/spaces/{sid}", None),
-                    (f"/v2/spaces/{sid}", None),
+                for full_url, appid, params in [
+                    (f"{msr}/v1/profiles/{profile_id}/club/actions", club_appid, {"spaceId": sid}),
+                    (f"{msr}/v1/spaces/{sid}/club/challenges", club_appid, None),
+                    (f"{msr}/v1/spaces/{sid}/club/challenges", web_appid, None),
+                    (f"{msr}/v1/spaces/{sid}/club/actions", club_appid, None),
                 ]:
-                    results.append(await probe(url, params))
+                    results.append(await probe(full_url, appid, params))
             out["results"] = results
             out["stage"] = "done"
         return out
