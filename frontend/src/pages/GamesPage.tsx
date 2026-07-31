@@ -1,10 +1,13 @@
 import { useEffect, useRef, useState, useCallback } from "react";
-import { Search } from "lucide-react";
+import { Search, List, LayoutGrid } from "lucide-react";
 import { api } from "../api";
 import type { Game, Summary } from "../types";
 import { GameCard } from "../components/GameCard";
+import { GameRow } from "../components/GameRow";
 import { GameDetailModal } from "../components/GameDetailModal";
 import { platformLabel } from "../lib/platforms";
+
+type ViewMode = "grid" | "list";
 
 const SORTS = [
   { key: "recent", label: "Recent" },
@@ -29,7 +32,15 @@ export function GamesPage({ summary }: { summary: Summary | null }) {
   const [loading, setLoading] = useState(false);
 
   const [selected, setSelected] = useState<number | null>(null);
+  const [view, setView] = useState<ViewMode>(
+    () => (localStorage.getItem("pantheon.view") as ViewMode) || "grid",
+  );
   const [sort, setSort] = useState("recent");
+
+  function changeView(v: ViewMode) {
+    setView(v);
+    localStorage.setItem("pantheon.view", v);
+  }
   const [platform, setPlatform] = useState("");
   const [completion, setCompletion] = useState("");
   const [search, setSearch] = useState("");
@@ -114,18 +125,43 @@ export function GamesPage({ summary }: { summary: Summary | null }) {
             className="w-44 bg-transparent text-sm text-slate-100 outline-none placeholder:text-faint"
           />
         </div>
+
+        <div className="flex rounded-lg border border-line bg-ink-850 p-1">
+          <button
+            onClick={() => changeView("list")}
+            title="List view"
+            className={`rounded-md p-1.5 transition ${view === "list" ? "bg-ink-700 text-slate-100" : "text-muted hover:text-slate-200"}`}
+          >
+            <List size={16} />
+          </button>
+          <button
+            onClick={() => changeView("grid")}
+            title="Grid view"
+            className={`rounded-md p-1.5 transition ${view === "grid" ? "bg-ink-700 text-slate-100" : "text-muted hover:text-slate-200"}`}
+          >
+            <LayoutGrid size={16} />
+          </button>
+        </div>
       </div>
 
       <div className="mb-3 text-xs uppercase tracking-wide text-faint">
         {total.toLocaleString()} {total === 1 ? "game" : "games"}
       </div>
 
-      {/* grid */}
-      <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-        {games.map((g) => (
-          <GameCard key={g.platform_game_id} game={g} onClick={() => setSelected(g.platform_game_id)} />
-        ))}
-      </div>
+      {/* games */}
+      {view === "grid" ? (
+        <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+          {games.map((g) => (
+            <GameCard key={g.platform_game_id} game={g} onClick={() => setSelected(g.platform_game_id)} />
+          ))}
+        </div>
+      ) : (
+        <div className="flex flex-col gap-1.5">
+          {games.map((g) => (
+            <GameRow key={g.platform_game_id} game={g} onClick={() => setSelected(g.platform_game_id)} />
+          ))}
+        </div>
+      )}
 
       {games.length === 0 && !loading && (
         <div className="py-16 text-center text-muted">No games match your filters.</div>
