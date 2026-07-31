@@ -65,4 +65,15 @@ export const api = {
 
   syncAll: () => send<{ status: string }>("/api/sync", "POST"),
   syncProgress: () => get<SyncProgress>("/api/sync/progress"),
+
+  // Ubisoft backend service account (used to look up public profiles by username)
+  ubisoftServiceStatus: () => get<{ signed_in: boolean }>("/api/ubisoft-service-status"),
+  ubisoftServiceLogin: (body: { email: string; password: string }) =>
+    send<{ status: string; two_factor_ticket?: string; method?: string }>(
+      "/api/ubisoft-setup",
+      "POST",
+      body,
+    ),
+  ubisoftServiceVerify: (body: { ticket: string; code: string }) =>
+    send<{ status: string }>("/api/ubisoft-setup/verify", "POST", body),
 };

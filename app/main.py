@@ -1161,8 +1161,8 @@ async def ubisoft_setup(payload: dict):
     Returns either {"status": "done"} or {"status": "2fa_required", "two_factor_ticket": ..., "method": "TOTP"|"EMAIL"}
     """
     from app.ubisoft_auth import start_auth
-    email = payload.get("email", "").strip()
-    password = payload.get("password", "")
+    email = (payload.get("email") or config.UBISOFT_SERVICE_EMAIL or "").strip()
+    password = payload.get("password") or config.UBISOFT_SERVICE_PASSWORD or ""
     if not email or not password:
         raise HTTPException(status_code=400, detail="email and password required")
     try:
@@ -1191,6 +1191,13 @@ async def ubisoft_setup_verify(payload: dict):
         raise HTTPException(status_code=400, detail=str(e))
     result["message"] = "Ubisoft authenticated successfully. Run a sync to import your games."
     return result
+
+
+@app.get("/api/ubisoft-service-status")
+async def ubisoft_service_status():
+    """Whether the backend Ubisoft service account is signed in (for the UI)."""
+    from app.ubisoft_auth import service_configured
+    return {"signed_in": service_configured()}
 
 
 @app.get("/api/xbox-setup")

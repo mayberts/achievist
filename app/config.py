@@ -32,7 +32,11 @@ WARGAMING_REGION = os.getenv("WARGAMING_REGION", "eu")
 
 GW2_API_KEY = os.getenv("GW2_API_KEY", "")
 
-UBISOFT_EMAIL = os.getenv("UBISOFT_EMAIL", "")
+# Backend Ubisoft "service account" — one login the app uses to look up public
+# profiles by username (like Trophies Hunter). Optional; can also be set up via
+# the /api/ubisoft-setup endpoints. The rememberMeTicket is stored under /data.
+UBISOFT_SERVICE_EMAIL = os.getenv("UBISOFT_SERVICE_EMAIL", "")
+UBISOFT_SERVICE_PASSWORD = os.getenv("UBISOFT_SERVICE_PASSWORD", "")
 
 EXOPHASE_PLAYER_ID = os.getenv("EXOPHASE_PLAYER_ID", "")
 EXOPHASE_REMEMBERME = os.getenv("EXOPHASE_REMEMBERME", "")
@@ -53,9 +57,6 @@ def enabled_accounts() -> list[dict]:
         accounts.append({"platform": "wargaming", "external_id": WARGAMING_NICKNAME})
     if GW2_API_KEY:
         accounts.append({"platform": "guildwars2", "external_id": "gw2"})
-    from app.ubisoft_auth import load_remember_me
-    if load_remember_me():
-        accounts.append({"platform": "ubisoft", "external_id": "ubisoft"})
     return accounts
 
 
@@ -66,7 +67,6 @@ def env_seed_accounts() -> list[dict]:
     account model. Only platforms with complete env config are included.
     """
     from app.xbox_auth import load_refresh_token
-    from app.ubisoft_auth import load_remember_me
 
     seeds: list[dict] = []
     if STEAM_API_KEY and STEAM_ID:
@@ -85,8 +85,4 @@ def env_seed_accounts() -> list[dict]:
     if GW2_API_KEY:
         seeds.append({"platform": "guildwars2", "external_id": "gw2",
                       "credentials": {"api_key": GW2_API_KEY}})
-    ubi_token = load_remember_me()
-    if ubi_token:
-        seeds.append({"platform": "ubisoft", "external_id": "ubisoft",
-                      "credentials": {"session_ticket": ubi_token}})
     return seeds

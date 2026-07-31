@@ -5,53 +5,53 @@ import httpx
 
 from app import config, db
 from app.platforms.base import Platform
-from app.ubisoft_auth import refresh_session, session_headers
+from app.ubisoft_auth import get_service_ticket, resolve_username, session_headers
 
 log = logging.getLogger(__name__)
 
 _BASE = "https://public-ubiservices.ubi.com"
-_SPACE_BASE = "https://public-ubiservices.ubi.com"
 
 
 class UbisoftPlatform(Platform):
     KEY = "ubisoft"
     LABEL = "Ubisoft Connect"
-    EXTERNAL_ID = "ubisoft"
     CONNECT_FIELDS = [
-        {"name": "session_ticket", "label": "Session Ticket", "type": "password", "required": True, "secret": True,
-         "help": "From connect.ubisoft.com → DevTools → Application → Local Storage → the ticket value "
-                 "(the long 'ewog…' string). Note: expires after a few hours."},
+        {"name": "external_id", "label": "Ubisoft Username", "type": "text", "required": True,
+         "help": "Your Ubisoft Connect username. Your profile must be set to public for achievements to sync."},
     ]
 
     async def sync(self, account: dict, conn) -> None:
         delay = config.REQUEST_DELAY_SECONDS
+        username = account["external_id"]
 
-        ticket, profile_id = await refresh_session(self.cred(account, "session_ticket"))
-        if not ticket or not profile_id:
-            raise RuntimeError("Ubisoft session refresh returned empty credentials")
-
+        # The backend service account (one-time email/password login) authorizes
+        # the lookups; each account is just a public username.
+        ticket = await get_service_ticket()
         headers = session_headers(ticket)
 
-        linked_id = await db.upsert_linked_account(conn, "ubisoft", profile_id)
+        linked_id = await db.upsert_linked_account(conn, "ubisoft", username)
         earned_cache = await db.get_earned_counts(conn, linked_id)
 
         async with httpx.AsyncClient(timeout=30) as client:
-            # Fetch played games
+            profile_id = await resolve_username(client, headers, username)
+
+            # Fetch played games for the resolved profile
             await asyncio.sleep(delay)
             games_resp = await client.get(
-                f"{_BASE}/v2/profiles/{profile_id}/playedgames",
+                f"{_BASE}/v1/profiles/{profile_id}/gamesplayed",
+                params={"spaceIds": "", "spacePlatformTypes": "", "applicationPlatformTypes": ""},
                 headers=headers,
             )
             if games_resp.status_code != 200:
                 raise RuntimeError(f"Ubisoft played games fetch failed: {games_resp.status_code} — {games_resp.text[:200]}")
 
             games_data = games_resp.json()
-            games = games_data.get("games") or []
+            games = games_data.get("gamesPlayed") or games_data.get("games") or []
             if not games:
-                log.info("Ubisoft: no games found for profile %s", profile_id)
+                log.info("Ubisoft: no games found for %s (profile %s)", username, profile_id)
                 return
 
-            log.info("Ubisoft: found %d games", len(games))
+            log.info("Ubisoft: found %d games for %s", len(games), username)
 
             for game in games:
                 space_id = game.get("spaceId") or game.get("space_id")
