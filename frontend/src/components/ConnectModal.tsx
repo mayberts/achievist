@@ -1,17 +1,20 @@
 import { useEffect, useState } from "react";
 import { X } from "lucide-react";
-import type { PlatformSchema } from "../types";
+import type { Account, PlatformSchema } from "../types";
 import { api } from "../api";
 
 export function ConnectModal({
   schema,
+  account,
   onClose,
   onConnected,
 }: {
   schema: PlatformSchema;
+  account?: Account;
   onClose: () => void;
   onConnected: () => void;
 }) {
+  const editing = !!account;
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={onClose}>
       <div
@@ -19,7 +22,9 @@ export function ConnectModal({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-slate-100">Connect {schema.label}</h2>
+          <h2 className="text-lg font-semibold text-slate-100">
+            {editing ? "Edit" : "Connect"} {schema.label}
+          </h2>
           <button onClick={onClose} className="text-muted hover:text-slate-200">
             <X size={18} />
           </button>
@@ -27,15 +32,34 @@ export function ConnectModal({
         {schema.auth_type === "oauth" ? (
           <OAuthFlow schema={schema} onConnected={onConnected} />
         ) : (
-          <FormFlow schema={schema} onConnected={onConnected} />
+          <FormFlow schema={schema} account={account} onConnected={onConnected} />
         )}
       </div>
     </div>
   );
 }
 
-function FormFlow({ schema, onConnected }: { schema: PlatformSchema; onConnected: () => void }) {
-  const [values, setValues] = useState<Record<string, string>>({});
+function FormFlow({
+  schema,
+  account,
+  onConnected,
+}: {
+  schema: PlatformSchema;
+  account?: Account;
+  onConnected: () => void;
+}) {
+  // Prefill non-secret fields (and external_id) when editing; secrets stay blank.
+  const [values, setValues] = useState<Record<string, string>>(() => {
+    const init: Record<string, string> = {};
+    if (account) {
+      for (const f of schema.fields) {
+        if (f.secret) continue;
+        if (f.name === "external_id") init[f.name] = account.external_id;
+        else if (account.credentials[f.name] != null) init[f.name] = account.credentials[f.name];
+      }
+    }
+    return init;
+  });
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -74,8 +98,9 @@ function FormFlow({ schema, onConnected }: { schema: PlatformSchema; onConnected
             <input
               type={f.type === "password" ? "password" : "text"}
               value={values[f.name] ?? ""}
+              placeholder={account && f.secret ? "Leave blank to keep current" : undefined}
               onChange={(e) => setValues((v) => ({ ...v, [f.name]: e.target.value }))}
-              className="w-full rounded-lg border border-line bg-ink-900 px-3 py-2 text-sm text-slate-100 outline-none focus:border-accent-soft"
+              className="w-full rounded-lg border border-line bg-ink-900 px-3 py-2 text-sm text-slate-100 outline-none placeholder:text-faint focus:border-accent-soft"
             />
           )}
           {f.help && <p className="mt-1 text-xs text-faint">{f.help}</p>}

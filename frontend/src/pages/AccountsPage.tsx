@@ -10,6 +10,7 @@ export function AccountsPage() {
   const [schemas, setSchemas] = useState<PlatformSchema[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [connecting, setConnecting] = useState<PlatformSchema | null>(null);
+  const [editingAccount, setEditingAccount] = useState<Account | undefined>(undefined);
   const [syncing, setSyncing] = useState<number | null>(null);
 
   async function refresh() {
@@ -87,7 +88,10 @@ export function AccountsPage() {
                       Sync
                     </button>
                     <button
-                      onClick={() => setConnecting(schema)}
+                      onClick={() => {
+                        setEditingAccount(acct);
+                        setConnecting(schema);
+                      }}
                       className="rounded-lg border border-line bg-ink-800 px-3 py-1.5 text-xs font-medium text-slate-200 transition hover:bg-ink-700"
                     >
                       Edit
@@ -102,7 +106,10 @@ export function AccountsPage() {
                 </>
               ) : (
                 <button
-                  onClick={() => setConnecting(schema)}
+                  onClick={() => {
+                    setEditingAccount(undefined);
+                    setConnecting(schema);
+                  }}
                   className="mt-4 inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-accent px-3 py-2 text-sm font-semibold text-white transition hover:bg-accent/90"
                 >
                   <Plus size={15} /> Connect
@@ -116,9 +123,14 @@ export function AccountsPage() {
       {connecting && (
         <ConnectModal
           schema={connecting}
-          onClose={() => setConnecting(null)}
+          account={editingAccount}
+          onClose={() => {
+            setConnecting(null);
+            setEditingAccount(undefined);
+          }}
           onConnected={() => {
             setConnecting(null);
+            setEditingAccount(undefined);
             refresh();
           }}
         />
