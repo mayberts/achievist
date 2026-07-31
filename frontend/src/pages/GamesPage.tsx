@@ -46,7 +46,16 @@ export function GamesPage({ summary }: { summary: Summary | null }) {
   const [search, setSearch] = useState("");
   const searchDebounced = useDebounce(search, 300);
 
-  const platforms = summary?.by_platform.map((p) => p.platform) ?? [];
+  // Build the platform filter from connected accounts (so a newly added account
+  // appears immediately), unioned with any platforms that already have games.
+  const [accountPlatforms, setAccountPlatforms] = useState<string[]>([]);
+  useEffect(() => {
+    api.accounts().then((a) => setAccountPlatforms(a.map((x) => x.platform))).catch(() => {});
+  }, []);
+
+  const platforms = Array.from(
+    new Set([...(summary?.by_platform.map((p) => p.platform) ?? []), ...accountPlatforms]),
+  );
 
   const load = useCallback(
     async (pageToLoad: number, replace: boolean) => {
