@@ -22,6 +22,19 @@ _BASE = "https://public-ubiservices.ubi.com"
 # Ubisoft Connect web-client App ID — the one the browser uses and that the
 # public API accepts for session tickets grabbed from localStorage.
 _APP_ID = "74e71609-1ddf-47da-9073-71ac3aa8c90c"
+
+# The "club" (achievements/actions) service lives on a separate host + App ID.
+CLUB_BASE = "https://msr-public-ubiservices.ubi.com"
+CLUB_APP_ID = "86263886-327a-4328-ac69-527f0d20a237"
+
+
+def club_headers(ticket: str) -> dict:
+    """Headers for the msr- club (achievements) service."""
+    headers = {**_base_headers(CLUB_APP_ID), "Authorization": f"Ubi_v1 t={ticket}"}
+    sid = _sid_from_ticket(ticket)
+    if sid:
+        headers["Ubi-SessionId"] = sid
+    return headers
 _TOKEN_FILE = Path("/data/ubisoft_remember_me.txt")
 _SESSION_FILE = Path("/data/ubisoft_session.txt")
 
