@@ -3,6 +3,7 @@ import { Search } from "lucide-react";
 import { api } from "../api";
 import type { Game, Summary } from "../types";
 import { GameCard } from "../components/GameCard";
+import { GameDetailModal } from "../components/GameDetailModal";
 import { platformLabel } from "../lib/platforms";
 
 const SORTS = [
@@ -27,6 +28,7 @@ export function GamesPage({ summary }: { summary: Summary | null }) {
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(false);
 
+  const [selected, setSelected] = useState<number | null>(null);
   const [sort, setSort] = useState("recent");
   const [platform, setPlatform] = useState("");
   const [completion, setCompletion] = useState("");
@@ -121,7 +123,7 @@ export function GamesPage({ summary }: { summary: Summary | null }) {
       {/* grid */}
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
         {games.map((g) => (
-          <GameCard key={g.platform_game_id} game={g} />
+          <GameCard key={g.platform_game_id} game={g} onClick={() => setSelected(g.platform_game_id)} />
         ))}
       </div>
 
@@ -139,6 +141,10 @@ export function GamesPage({ summary }: { summary: Summary | null }) {
             {loading ? "Loading…" : "Load more"}
           </button>
         </div>
+      )}
+
+      {selected !== null && (
+        <GameDetailModal gameId={selected} onClose={() => setSelected(null)} />
       )}
     </div>
   );
