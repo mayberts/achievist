@@ -19,3 +19,7 @@ venv/
 
 # local artifacts
 *.zip
+
+# frontend build
+frontend/node_modules/
+app/webdist/

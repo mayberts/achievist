@@ -1,0 +1,80 @@
+export interface PlatformSummary {
+  platform: string;
+  games: number;
+  earned: number;
+  possible: number;
+  pct: number;
+  total_playtime_minutes: number | null;
+  last_sync: string | null;
+  most_played: boolean;
+}
+
+export interface Summary {
+  total_games: number;
+  total_earned: number;
+  total_possible: number;
+  overall_pct: number;
+  perfect_games: number;
+  by_platform: PlatformSummary[];
+}
+
+export interface Game {
+  platform_game_id: number;
+  platform: string;
+  platform_app_id: string;
+  name: string;
+  icon_url: string | null;
+  store_id: string | null;
+  sgdb_cover_url: string | null;
+  igdb_cover_url: string | null;
+  playtime_minutes: number | null;
+  earned_achievements: number;
+  total_achievements: number;
+  completion_pct: number;
+  last_played_at: string | null;
+}
+
+export interface GamesResponse {
+  total: number;
+  page: number;
+  page_size: number;
+  games: Game[];
+}
+
+export interface ConnectField {
+  name: string;
+  label: string;
+  type: "text" | "password" | "select";
+  required?: boolean;
+  secret?: boolean;
+  help?: string;
+  options?: string[];
+}
+
+export interface PlatformSchema {
+  key: string;
+  label: string;
+  auth_type: "form" | "oauth";
+  fields: ConnectField[];
+}
+
+export interface Account {
+  id: number;
+  platform: string;
+  external_id: string;
+  display_name: string | null;
+  enabled: boolean;
+  status: string | null;
+  last_error: string | null;
+  last_synced_at: string | null;
+  credentials: Record<string, string>;
+}
+
+export interface SyncProgress {
+  running: boolean;
+  started_at: string | null;
+  platforms: Record<
+    string,
+    { status: string; games_seen: number; achievements_synced: number; error: string | null }
+  >;
+}
