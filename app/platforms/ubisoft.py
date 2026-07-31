@@ -77,11 +77,32 @@ class UbisoftPlatform(Platform):
                 return info
 
             async def club_actions(host_path: str) -> list:
-                await asyncio.sleep(delay)
-                r = await client.get(f"{CLUB_BASE}{host_path}", headers=club_h)
-                if r.status_code != 200:
-                    return []
-                return r.json().get("actions") or []
+                """
+                Fetch all club actions for a path, paging through results.
+                The endpoint returns a limited page (~10); walk offset until no
+                new action ids appear (also safe if the API ignores paging).
+                """
+                sep = "&" if "?" in host_path else "?"
+                all_actions: list = []
+                seen: set[str] = set()
+                offset = 0
+                for _ in range(40):  # safety cap (~4000 actions)
+                    await asyncio.sleep(delay)
+                    r = await client.get(
+                        f"{CLUB_BASE}{host_path}{sep}limit=100&offset={offset}",
+                        headers=club_h,
+                    )
+                    if r.status_code != 200:
+                        break
+                    page = r.json().get("actions") or []
+                    new = [a for a in page if str(a.get("id")) not in seen]
+                    if not new:
+                        break
+                    for a in new:
+                        seen.add(str(a.get("id")))
+                    all_actions.extend(new)
+                    offset += len(page)
+                return all_actions
 
             for game in games:
                 sid = game.get("spaceId")
