@@ -252,7 +252,54 @@ async def _enrich_exophase_360_icons() -> None:
         log.info("Exophase enrichment: updated %d achievement icons", updated)
 
 
-async def run_sync() -> None:
+async def _sync_one_account(pool, account: dict) -> None:
+    """Sync a single connected account, recording status + sync_run rows."""
+    platform_cls = PLATFORMS.get(account["platform"])
+    if not platform_cls:
+        return
+    plat = account["platform"]
+    log.info("Syncing %s / %s", plat, account["external_id"])
+    _sync_progress["platforms"][plat] = {
+        "status": "running",
+        "games_seen": 0,
+        "achievements_synced": 0,
+        "error": None,
+    }
+    async with pool.connection() as conn:
+        run_row = await _fetchrow(
+            conn,
+            "INSERT INTO sync_runs (platform, linked_account_id, started_at, status) "
+            "VALUES (%s, %s, now(), 'running') RETURNING id",
+            plat, account.get("id"),
+        )
+        run_id = run_row["id"] if run_row else None
+        try:
+            worker = platform_cls()
+            worker._progress = _sync_progress["platforms"][plat]
+            await worker.sync(account, conn)
+            if run_id:
+                await conn.execute(
+                    "UPDATE sync_runs SET finished_at = now(), status = 'ok' WHERE id = %s",
+                    (run_id,),
+                )
+            if account.get("id"):
+                await db.set_account_status(conn, account["id"], "connected")
+            _sync_progress["platforms"][plat]["status"] = "done"
+            log.info("Sync done: %s", plat)
+        except Exception as exc:
+            log.exception("Sync failed: %s", plat)
+            _sync_progress["platforms"][plat]["status"] = "error"
+            _sync_progress["platforms"][plat]["error"] = str(exc)
+            if account.get("id"):
+                await db.set_account_status(conn, account["id"], "error", str(exc)[:500])
+            if run_id:
+                await conn.execute(
+                    "UPDATE sync_runs SET finished_at = now(), status = 'error', detail = %s WHERE id = %s",
+                    (str(exc), run_id),
+                )
+
+
+async def run_sync(account_id: int | None = None) -> None:
     if _sync_lock.locked():
         log.info("Sync already running, skipping")
         return
@@ -263,45 +310,14 @@ async def run_sync() -> None:
         _sync_progress["platforms"] = {}
 
         pool = await db.get_pool()
-        for account in config.enabled_accounts():
-            platform_cls = PLATFORMS.get(account["platform"])
-            if not platform_cls:
-                continue
-            plat = account["platform"]
-            log.info("Syncing %s / %s", plat, account["external_id"])
-            _sync_progress["platforms"][plat] = {
-                "status": "running",
-                "games_seen": 0,
-                "achievements_synced": 0,
-                "error": None,
-            }
-            async with pool.connection() as conn:
-                run_row = await _fetchrow(
-                    conn,
-                    "INSERT INTO sync_runs (platform, started_at, status) VALUES (%s, now(), 'running') RETURNING id",
-                    plat,
-                )
-                run_id = run_row["id"] if run_row else None
-                try:
-                    worker = platform_cls()
-                    worker._progress = _sync_progress["platforms"][plat]
-                    await worker.sync(account, conn)
-                    if run_id:
-                        await conn.execute(
-                            "UPDATE sync_runs SET finished_at = now(), status = 'ok' WHERE id = %s",
-                            (run_id,),
-                        )
-                    _sync_progress["platforms"][plat]["status"] = "done"
-                    log.info("Sync done: %s", plat)
-                except Exception as exc:
-                    log.exception("Sync failed: %s", plat)
-                    _sync_progress["platforms"][plat]["status"] = "error"
-                    _sync_progress["platforms"][plat]["error"] = str(exc)
-                    if run_id:
-                        await conn.execute(
-                            "UPDATE sync_runs SET finished_at = now(), status = 'error', detail = %s WHERE id = %s",
-                            (str(exc), run_id),
-                        )
+        async with pool.connection() as conn:
+            accounts = await db.list_accounts(conn)
+        accounts = [a for a in accounts if a.get("enabled", True)]
+        if account_id is not None:
+            accounts = [a for a in accounts if a["id"] == account_id]
+
+        for account in accounts:
+            await _sync_one_account(pool, account)
 
         _sync_progress["running"] = False
         asyncio.create_task(_enrich_hltb())
@@ -315,9 +331,17 @@ async def lifespan(app: FastAPI):
     pool = await db.get_pool()
     await db.apply_schema(pool)
 
-    for account in config.enabled_accounts():
+    # One-time migration: seed DB-backed accounts from any legacy .env config.
+    # Only fills in platforms that don't already have a connected account, so
+    # credentials edited in the UI are never overwritten by stale env values.
+    for seed in config.env_seed_accounts():
         async with pool.connection() as conn:
-            await db.upsert_linked_account(conn, account["platform"], account["external_id"])
+            if not await db.account_exists(conn, seed["platform"]):
+                await db.upsert_account(
+                    conn, seed["platform"], seed["external_id"],
+                    seed["credentials"], seed.get("display_name"),
+                )
+                log.info("Seeded %s account from environment", seed["platform"])
 
     asyncio.create_task(run_sync())
     asyncio.create_task(_enrich_hltb())
@@ -1017,6 +1041,106 @@ async def trigger_sync():
     if _sync_lock.locked():
         raise HTTPException(status_code=409, detail="Sync already in progress")
     asyncio.create_task(run_sync())
+    return {"status": "started"}
+
+
+# ── Connected-account management ─────────────────────────────────────────────
+
+def _redact_account(row: dict) -> dict:
+    """Serialize an account for the UI, masking secret credential values."""
+    platform_cls = PLATFORMS.get(row["platform"])
+    secret_fields = set()
+    if platform_cls:
+        secret_fields = {f["name"] for f in platform_cls.CONNECT_FIELDS if f.get("secret")}
+    creds = row.get("credentials") or {}
+    safe_creds = {
+        k: ("••••••" if k in secret_fields and v else v)
+        for k, v in creds.items()
+    }
+    return {
+        "id": row["id"],
+        "platform": row["platform"],
+        "external_id": row["external_id"],
+        "display_name": row["display_name"],
+        "enabled": row["enabled"],
+        "status": row.get("status"),
+        "last_error": row.get("last_error"),
+        "last_synced_at": row.get("last_synced_at"),
+        "credentials": safe_creds,
+    }
+
+
+@app.get("/api/platforms")
+async def list_platforms():
+    """Connection schemas for every supported platform (drives the Settings UI)."""
+    return [cls.connect_schema() for cls in PLATFORMS.values()]
+
+
+@app.get("/api/accounts")
+async def list_accounts():
+    pool = await db.get_pool()
+    async with pool.connection() as conn:
+        rows = await db.list_accounts(conn)
+    return [_redact_account(r) for r in rows]
+
+
+@app.post("/api/accounts", status_code=201)
+async def connect_account(payload: dict):
+    """
+    Connect (or update) an account.
+    Body: {"platform": "steam", "external_id": "...", "credentials": {...}}
+    For fixed-identity platforms (gw2, xbox, ubisoft) external_id is optional.
+    """
+    platform = (payload.get("platform") or "").strip()
+    platform_cls = PLATFORMS.get(platform)
+    if not platform_cls:
+        raise HTTPException(status_code=400, detail=f"Unknown platform '{platform}'")
+
+    creds = payload.get("credentials") or {}
+    # external_id comes from a dedicated field, the credentials, or a fixed default
+    external_id = (
+        payload.get("external_id")
+        or creds.pop("external_id", None)
+        or platform_cls.EXTERNAL_ID
+        or creds.get("username")  # RA: default target user to the account username
+    )
+    if not external_id:
+        raise HTTPException(status_code=400, detail="external_id is required for this platform")
+
+    # Validate required fields (skip external_id, which is handled above)
+    for field in platform_cls.CONNECT_FIELDS:
+        if field["name"] == "external_id":
+            continue
+        if field.get("required") and not creds.get(field["name"]):
+            raise HTTPException(status_code=400, detail=f"Missing required field: {field['label']}")
+
+    pool = await db.get_pool()
+    async with pool.connection() as conn:
+        account_id = await db.upsert_account(conn, platform, str(external_id), creds)
+    return {"id": account_id, "status": "connected"}
+
+
+@app.delete("/api/accounts/{account_id}", status_code=204)
+async def disconnect_account(account_id: int):
+    pool = await db.get_pool()
+    async with pool.connection() as conn:
+        acct = await db.get_account(conn, account_id)
+        if not acct:
+            raise HTTPException(status_code=404, detail="Account not found")
+        await db.delete_account(conn, account_id)
+    return None
+
+
+@app.post("/api/accounts/{account_id}/sync", status_code=202)
+async def sync_account(account_id: int):
+    if _sync_lock.locked():
+        raise HTTPException(status_code=409, detail="Sync already in progress")
+    pool = await db.get_pool()
+    async with pool.connection() as conn:
+        acct = await db.get_account(conn, account_id)
+    if not acct:
+        raise HTTPException(status_code=404, detail="Account not found")
+    asyncio.create_task(run_sync(account_id=account_id))
     return {"status": "started"}
 
 

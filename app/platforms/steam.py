@@ -10,9 +10,18 @@ _BASE = "https://api.steampowered.com"
 
 
 class SteamPlatform(Platform):
+    KEY = "steam"
+    LABEL = "Steam"
+    CONNECT_FIELDS = [
+        {"name": "external_id", "label": "SteamID64", "type": "text", "required": True,
+         "help": "Your 64-bit SteamID (the long number, e.g. 7656119…). Find it at steamid.io."},
+        {"name": "api_key", "label": "API Key", "type": "password", "required": True, "secret": True,
+         "help": "Get one at steamcommunity.com/dev/apikey"},
+    ]
+
     async def sync(self, account: dict, conn) -> None:
         steam_id = account["external_id"]
-        key = config.STEAM_API_KEY
+        key = self.cred(account, "api_key", config.STEAM_API_KEY)
         delay = config.REQUEST_DELAY_SECONDS
 
         linked_id = await db.upsert_linked_account(conn, "steam", steam_id)

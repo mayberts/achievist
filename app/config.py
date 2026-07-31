@@ -57,3 +57,36 @@ def enabled_accounts() -> list[dict]:
     if load_remember_me():
         accounts.append({"platform": "ubisoft", "external_id": "ubisoft"})
     return accounts
+
+
+def env_seed_accounts() -> list[dict]:
+    """
+    Build full account records (with credentials) from environment variables.
+    Used once on startup to migrate a legacy .env setup into the DB-backed
+    account model. Only platforms with complete env config are included.
+    """
+    from app.xbox_auth import load_refresh_token
+    from app.ubisoft_auth import load_remember_me
+
+    seeds: list[dict] = []
+    if STEAM_API_KEY and STEAM_ID:
+        seeds.append({"platform": "steam", "external_id": STEAM_ID,
+                      "credentials": {"api_key": STEAM_API_KEY}})
+    if RA_USERNAME and RA_API_KEY:
+        seeds.append({"platform": "retroachievements", "external_id": RA_TARGET_USER,
+                      "credentials": {"username": RA_USERNAME, "api_key": RA_API_KEY}})
+    xbox_token = XBOX_REFRESH_TOKEN or load_refresh_token()
+    if xbox_token:
+        seeds.append({"platform": "xbox", "external_id": "xbox",
+                      "credentials": {"refresh_token": xbox_token}})
+    if WARGAMING_APP_ID and WARGAMING_NICKNAME:
+        seeds.append({"platform": "wargaming", "external_id": WARGAMING_NICKNAME,
+                      "credentials": {"app_id": WARGAMING_APP_ID, "region": WARGAMING_REGION}})
+    if GW2_API_KEY:
+        seeds.append({"platform": "guildwars2", "external_id": "gw2",
+                      "credentials": {"api_key": GW2_API_KEY}})
+    ubi_token = load_remember_me()
+    if ubi_token:
+        seeds.append({"platform": "ubisoft", "external_id": "ubisoft",
+                      "credentials": {"session_ticket": ubi_token}})
+    return seeds

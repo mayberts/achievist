@@ -24,10 +24,15 @@ def _xbl_headers(tokens: XboxTokens, contract: str = "2") -> dict:
 
 
 class XboxPlatform(Platform):
+    KEY = "xbox"
+    LABEL = "Xbox"
+    AUTH_TYPE = "oauth"
+    EXTERNAL_ID = "xbox"
+
     async def sync(self, account: dict, conn) -> None:
         from app.xbox_auth import get_tokens, load_refresh_token
 
-        refresh_token = config.XBOX_REFRESH_TOKEN or load_refresh_token()
+        refresh_token = self.cred(account, "refresh_token") or config.XBOX_REFRESH_TOKEN or load_refresh_token()
         if not refresh_token:
             raise RuntimeError("Xbox not configured — hit /api/xbox-setup to authenticate")
 

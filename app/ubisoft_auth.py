@@ -125,18 +125,19 @@ async def complete_2fa(two_factor_ticket: str, code: str) -> dict:
     }
 
 
-async def refresh_session() -> tuple[str, str]:
+async def refresh_session(stored: str | None = None) -> tuple[str, str]:
     """
     Return (session_ticket, profile_id) for API calls.
 
-    The stored token may be either:
+    `stored` may be passed in from an account's saved credentials; if omitted it
+    falls back to the token file. The token may be either:
       - a rememberMeTicket (from the setup flow) → renew it with `rm` auth,
         which yields a fresh session ticket + profileId directly
       - a session ticket (JWE grabbed from the browser's localStorage,
         starts with "ewog") → use it directly as `Ubi_v1 t=`; the profileId
         is encrypted inside the JWE so we look it up via the /profiles/me API
     """
-    stored = _load_remember_me()
+    stored = (stored or "").strip() or _load_remember_me()
     if not stored:
         raise RuntimeError("Ubisoft not configured — run the setup flow at /api/ubisoft-setup")
 
