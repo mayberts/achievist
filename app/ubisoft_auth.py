@@ -222,8 +222,13 @@ async def resolve_username(client: httpx.AsyncClient, headers: dict, username: s
 
 
 def service_configured() -> bool:
-    """True if a backend Ubisoft service session has been established."""
-    return _load_remember_me() is not None
+    """
+    True if a durable backend service login exists — i.e. a rememberMeTicket
+    from the email/password flow. A leftover browser session ticket ("ewog…")
+    is short-lived and doesn't count, so the UI still prompts for a real login.
+    """
+    tok = _load_remember_me()
+    return bool(tok) and not tok.startswith("ewog")
 
 
 def load_remember_me() -> str | None:

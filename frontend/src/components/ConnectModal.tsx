@@ -130,6 +130,7 @@ function UbisoftFlow({
   onConnected: () => void;
 }) {
   const [signedIn, setSignedIn] = useState<boolean | null>(null);
+  const [forceLogin, setForceLogin] = useState(false);
 
   useEffect(() => {
     api.ubisoftServiceStatus().then((s) => setSignedIn(s.signed_in)).catch(() => setSignedIn(false));
@@ -140,15 +141,28 @@ function UbisoftFlow({
   }
 
   // Once the backend service account is signed in, an account is just a username.
-  if (signedIn) {
+  if (signedIn && !forceLogin) {
     return (
       <div className="space-y-3">
         <FormFlow schema={schema} account={account} onConnected={onConnected} />
+        <button
+          onClick={() => setForceLogin(true)}
+          className="text-xs text-muted underline hover:text-slate-300"
+        >
+          Re-sign in the backend Ubisoft account
+        </button>
       </div>
     );
   }
 
-  return <UbisoftServiceLogin onSignedIn={() => setSignedIn(true)} />;
+  return (
+    <UbisoftServiceLogin
+      onSignedIn={() => {
+        setSignedIn(true);
+        setForceLogin(false);
+      }}
+    />
+  );
 }
 
 function UbisoftServiceLogin({ onSignedIn }: { onSignedIn: () => void }) {
