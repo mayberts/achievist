@@ -83,6 +83,15 @@ async def get_account(conn, account_id: int) -> dict | None:
     )
 
 
+async def get_account_by_key(conn, platform: str, external_id: str) -> dict | None:
+    return await _fetchrow(
+        conn,
+        "SELECT id, platform, external_id, credentials FROM linked_accounts "
+        "WHERE platform = %s AND external_id = %s",
+        platform, external_id,
+    )
+
+
 async def upsert_account(conn, platform: str, external_id: str,
                          credentials: dict, display_name: str | None = None) -> int:
     """Create or update a connected account, storing credentials as JSONB."""

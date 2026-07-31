@@ -1096,7 +1096,12 @@ async def connect_account(payload: dict):
     if not platform_cls:
         raise HTTPException(status_code=400, detail=f"Unknown platform '{platform}'")
 
-    creds = payload.get("credentials") or {}
+    raw_creds = payload.get("credentials") or {}
+    # Drop blanks and masked placeholders so an unchanged secret keeps its value.
+    creds = {
+        k: v for k, v in raw_creds.items()
+        if isinstance(v, str) and v.strip() and v.strip() != "••••••"
+    }
     # external_id comes from a dedicated field, the credentials, or a fixed default
     external_id = (
         payload.get("external_id")
@@ -1107,16 +1112,20 @@ async def connect_account(payload: dict):
     if not external_id:
         raise HTTPException(status_code=400, detail="external_id is required for this platform")
 
-    # Validate required fields (skip external_id, which is handled above)
-    for field in platform_cls.CONNECT_FIELDS:
-        if field["name"] == "external_id":
-            continue
-        if field.get("required") and not creds.get(field["name"]):
-            raise HTTPException(status_code=400, detail=f"Missing required field: {field['label']}")
-
     pool = await db.get_pool()
     async with pool.connection() as conn:
-        account_id = await db.upsert_account(conn, platform, str(external_id), creds)
+        # Merge with any existing credentials so editing one field doesn't wipe the rest.
+        existing = await db.get_account_by_key(conn, platform, str(external_id))
+        merged = {**(existing["credentials"] if existing else {}), **creds}
+
+        # Validate required fields against the merged result (skip external_id).
+        for field in platform_cls.CONNECT_FIELDS:
+            if field["name"] == "external_id":
+                continue
+            if field.get("required") and not merged.get(field["name"]):
+                raise HTTPException(status_code=400, detail=f"Missing required field: {field['label']}")
+
+        account_id = await db.upsert_account(conn, platform, str(external_id), merged)
     return {"id": account_id, "status": "connected"}
 
 
