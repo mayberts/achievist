@@ -1193,6 +1193,55 @@ async def ubisoft_setup_verify(payload: dict):
     return result
 
 
+@app.get("/api/ubisoft-debug")
+async def ubisoft_debug(username: str):
+    """
+    Probe candidate Ubisoft achievement/name endpoints for a username's first
+    couple of games, so we can find the ones that return real data.
+    """
+    from app.ubisoft_auth import get_service_ticket, resolve_username, session_headers
+
+    ticket = await get_service_ticket()
+    headers = session_headers(ticket)
+    base = "https://public-ubiservices.ubi.com"
+
+    async with httpx.AsyncClient(timeout=30) as client:
+        profile_id = await resolve_username(client, headers, username)
+
+        gp = await client.get(
+            f"{base}/v1/profiles/{profile_id}/gamesplayed",
+            params={"spaceIds": "", "spacePlatformTypes": "", "applicationPlatformTypes": ""},
+            headers=headers,
+        )
+        games = (gp.json().get("gamesPlayed") if gp.status_code == 200 else []) or []
+        spaces = [g.get("spaceId") for g in games[:2] if g.get("spaceId")]
+
+        async def probe(url: str, params: dict | None = None):
+            try:
+                r = await client.get(f"{base}{url}", params=params or {}, headers=headers)
+                body = r.text[:600]
+                return {"url": url, "params": params, "status": r.status_code, "body": body}
+            except Exception as e:
+                return {"url": url, "params": params, "error": str(e)}
+
+        results = []
+        for sid in spaces:
+            candidates = [
+                (f"/v1/profiles/{profile_id}/achievements", {"spaceIds": sid, "populationId": "uplay"}),
+                (f"/v1/profiles/{profile_id}/achievements", {"spaceId": sid}),
+                (f"/v3/profiles/{profile_id}/achievements", {"spaceIds": sid}),
+                (f"/v1/spaces/{sid}/achievements", None),
+                (f"/v1/spaces/{sid}/achievements/actions", None),
+                (f"/v1/profiles/{profile_id}/spaces/{sid}/achievements", None),
+                (f"/v1/spaces/{sid}", None),
+                (f"/v2/spaces/{sid}", None),
+            ]
+            for url, params in candidates:
+                results.append(await probe(url, params))
+
+    return {"profile_id": profile_id, "spaces_probed": spaces, "total_games": len(games), "results": results}
+
+
 @app.get("/api/ubisoft-service-status")
 async def ubisoft_service_status():
     """Whether the backend Ubisoft service ticket is present and still valid."""
