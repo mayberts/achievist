@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, lazy, Suspense } from "react";
 import { RefreshCw } from "lucide-react";
 import { api } from "./api";
 import type { Summary, SyncProgress } from "./types";
@@ -6,7 +6,11 @@ import { Nav, type Tab } from "./components/Nav";
 import { SummaryBar } from "./components/SummaryBar";
 import { GamesPage } from "./pages/GamesPage";
 import { AccountsPage } from "./pages/AccountsPage";
-import { StatisticsPage } from "./pages/StatisticsPage";
+
+// Statistics pulls in recharts (~340 kB); load it only when the tab is opened.
+const StatisticsPage = lazy(() =>
+  import("./pages/StatisticsPage").then((m) => ({ default: m.StatisticsPage })),
+);
 
 export default function App() {
   const [tab, setTab] = useState<Tab>("games");
@@ -82,7 +86,11 @@ export default function App() {
         <div className="mt-6">
           {tab === "games" && <GamesPage summary={summary} />}
           {tab === "accounts" && <AccountsPage />}
-          {tab === "statistics" && <StatisticsPage />}
+          {tab === "statistics" && (
+            <Suspense fallback={<div className="py-16 text-center text-muted">Loading…</div>}>
+              <StatisticsPage />
+            </Suspense>
+          )}
         </div>
       </div>
     </div>
