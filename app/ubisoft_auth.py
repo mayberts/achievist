@@ -182,6 +182,50 @@ async def _lookup_profile_id(client: httpx.AsyncClient, headers: dict) -> str:
     raise RuntimeError(f"Could not resolve Ubisoft profileId: HTTP {resp.status_code} — {resp.text[:200]}")
 
 
+async def get_service_ticket() -> str:
+    """
+    Get a live session ticket for the app's backend Ubisoft service account.
+    Uses the stored rememberMeTicket (from the one-time email/password login)
+    and refreshes it. Raises if the service account isn't configured.
+    """
+    ticket, _ = await refresh_session()
+    if not ticket:
+        raise RuntimeError(
+            "Ubisoft service account not signed in. Complete the one-time login at "
+            "/api/ubisoft-setup (email + password, then 2FA) so the app can look up "
+            "public profiles by username."
+        )
+    return ticket
+
+
+async def resolve_username(client: httpx.AsyncClient, headers: dict, username: str) -> str:
+    """
+    Resolve a Ubisoft username to its profileId via the public profiles lookup.
+    The target profile must be public for this to succeed.
+    """
+    resp = await client.get(
+        f"{_BASE}/v3/profiles",
+        params={"nameOnPlatform": username, "platformType": "uplay"},
+        headers=headers,
+    )
+    if resp.status_code == 401:
+        raise RuntimeError("Ubisoft service session expired (401). Re-run /api/ubisoft-setup.")
+    if resp.status_code != 200:
+        raise RuntimeError(f"Ubisoft username lookup failed: HTTP {resp.status_code} — {resp.text[:200]}")
+    profiles = resp.json().get("profiles") or []
+    if not profiles:
+        raise RuntimeError(f"No Ubisoft profile found for username '{username}' (is it spelled correctly?)")
+    pid = profiles[0].get("profileId")
+    if not pid:
+        raise RuntimeError(f"Ubisoft profile for '{username}' has no profileId")
+    return pid
+
+
+def service_configured() -> bool:
+    """True if a backend Ubisoft service session has been established."""
+    return _load_remember_me() is not None
+
+
 def load_remember_me() -> str | None:
     return _load_remember_me()
 
