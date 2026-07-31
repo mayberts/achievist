@@ -1247,18 +1247,32 @@ async def ubisoft_debug(username: str):
                 except Exception as e:
                     return {"url": full_url, "appid": appid, "params": params, "error": str(e)}
 
+            # Candidate Ubisoft App IDs to try against the "challenges" (modern
+            # achievements) endpoints, which 403'd for our app ids.
+            appids = [
+                club_appid,
+                web_appid,
+                "314d4fef-e568-454a-ae06-43e3bece12a6",  # Uplay PC
+                "e3d5ea9e-50bd-43b7-88bf-39794f4e3d40",  # PC client
+                "f68a4bb5-608a-4ff2-8123-be8ef797e0a6",  # app id seen in gamesplayed
+                "685a3038-2b04-47ee-9c5a-6403381a46aa",  # R6 stats
+                "3587dcbb-7f81-457c-9781-0e3f29f6f56a",
+            ]
+            # Use one real game space (not the Uplay client) for challenges probes.
+            game_space = spaces[-1] if len(spaces) > 1 else spaces[0]
+
             results = []
-            # profile-wide club actions (player's unlocked achievements)
-            for appid in (club_appid, web_appid):
-                results.append(await probe(f"{msr}/v1/profiles/{profile_id}/club/actions", appid))
-            for sid in spaces:
-                for full_url, appid, params in [
-                    (f"{msr}/v1/profiles/{profile_id}/club/actions", club_appid, {"spaceId": sid}),
-                    (f"{msr}/v1/spaces/{sid}/club/challenges", club_appid, None),
-                    (f"{msr}/v1/spaces/{sid}/club/challenges", web_appid, None),
-                    (f"{msr}/v1/spaces/{sid}/club/actions", club_appid, None),
+            # 1) modern-achievement candidates across many app ids
+            for appid in appids:
+                for full_url, params in [
+                    (f"{msr}/v1/spaces/{game_space}/club/challenges", None),
+                    (f"{base}/v1/profiles/{profile_id}/challenges/progressions", {"spaceId": game_space}),
+                    (f"{msr}/v1/profiles/{profile_id}/challenges/progressions", {"spaceId": game_space}),
+                    (f"{msr}/v1/spaces/{game_space}/challenges", None),
+                    (f"{base}/v1/spaces/{game_space}/challenges", None),
                 ]:
                     results.append(await probe(full_url, appid, params))
+            out["game_space_probed"] = game_space
             out["results"] = results
             out["stage"] = "done"
         return out
