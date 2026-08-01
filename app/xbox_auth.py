@@ -31,7 +31,11 @@ _MS_TOKEN_URL = "https://login.microsoftonline.com/consumers/oauth2/v2.0/token"
 _XBL_URL = "https://user.auth.xboxlive.com/user/authenticate"
 _XSTS_URL = "https://xsts.auth.xboxlive.com/xsts/authorize"
 
-_CLIENT_ID = os.getenv("XBOX_CLIENT_ID", "")
+# Public first-party client ID that supports the device-code flow with the
+# XboxLive.signin scope, so no Azure app registration is needed out of the box.
+# Override with XBOX_CLIENT_ID if you have your own registered app.
+_DEFAULT_CLIENT_ID = "00000000402b5328"
+_CLIENT_ID = os.getenv("XBOX_CLIENT_ID") or _DEFAULT_CLIENT_ID
 _SCOPE = "XboxLive.signin offline_access"
 
 _TOKEN_FILE = Path("/data/xbox_refresh_token.txt")
@@ -50,13 +54,6 @@ class XboxTokens:
 
 async def start_device_flow() -> dict:
     """Start device code flow. Returns dict with user_code, verification_uri, device_code, interval."""
-    if not _CLIENT_ID:
-        raise RuntimeError(
-            "XBOX_CLIENT_ID is not set. Register a free Azure app at portal.azure.com "
-            "(App registrations → New registration, Personal Microsoft accounts only, "
-            "no redirect URI needed, then Authentication → Allow public client flows → Yes) "
-            "then set XBOX_CLIENT_ID=<your app's client UUID>."
-        )
     async with httpx.AsyncClient(timeout=15) as client:
         resp = await client.post(
             _DEVICE_CODE_URL,
