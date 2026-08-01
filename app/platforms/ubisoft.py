@@ -104,6 +104,9 @@ class UbisoftPlatform(Platform):
                     offset += len(page)
                 return all_actions
 
+            # Non-game spaces (the Uplay client itself) to skip.
+            junk_names = {"uplay client", "uplaypc", "uplay.com", "uplay"}
+
             for game in games:
                 sid = game.get("spaceId")
                 if not sid:
@@ -111,6 +114,10 @@ class UbisoftPlatform(Platform):
 
                 info = await space_info(sid)
                 parent_id = info.get("parentSpaceId")
+
+                pre_name = (info.get("parentSpaceName") or info.get("spaceName") or "").strip()
+                if pre_name.lower() in junk_names:
+                    continue
 
                 # Achievement definitions live on the space itself, or its parent
                 # (e.g. crossplay variants). Try both.

@@ -479,7 +479,7 @@ async def games(
                 pg.id               AS platform_game_id,
                 pg.platform,
                 pg.platform_app_id,
-                pg.name,
+                CASE WHEN pg.platform = 'ubisoft' THEN COALESCE(ig.name, pg.name) ELSE pg.name END AS name,
                 pg.icon_url,
                 pg.store_id,
                 pg.sgdb_cover_url,
@@ -518,7 +518,7 @@ async def game_detail(platform_game_id: int):
                 pg.id               AS platform_game_id,
                 pg.platform,
                 pg.platform_app_id,
-                pg.name,
+                CASE WHEN pg.platform = 'ubisoft' THEN COALESCE(ig.name, pg.name) ELSE pg.name END AS name,
                 pg.icon_url,
                 pg.store_id,
                 pg.sgdb_cover_url,
@@ -774,7 +774,9 @@ async def statistics_platform(platform: str):
         rows = await _fetch(
             conn,
             """
-            SELECT pg.id AS platform_game_id, pg.name, pg.icon_url,
+            SELECT pg.id AS platform_game_id,
+                   CASE WHEN pg.platform = 'ubisoft' THEN COALESCE(ig.name, pg.name) ELSE pg.name END AS name,
+                   pg.icon_url,
                    ig.cover_url AS igdb_cover_url, pg.platform_app_id,
                    ug.earned_achievements, ug.total_achievements, ug.completion_pct
             FROM user_games ug
