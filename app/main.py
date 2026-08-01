@@ -766,6 +766,85 @@ async def statistics():
         raise
 
 
+@app.get("/api/activity")
+async def activity():
+    """Unlock heatmap, streaks, total playtime, and a recent-activity feed."""
+    from datetime import date, timedelta
+
+    pool = await db.get_pool()
+    async with pool.connection() as conn:
+        heatmap_rows = await _fetch(
+            conn,
+            """
+            SELECT unlocked_at::date AS day, COUNT(*) AS cnt
+            FROM user_achievements
+            WHERE unlocked = true AND unlocked_at IS NOT NULL
+              AND unlocked_at >= now() - interval '53 weeks'
+            GROUP BY unlocked_at::date
+            ORDER BY day
+            """,
+        )
+        playtime_row = await _fetchrow(
+            conn, "SELECT COALESCE(SUM(playtime_minutes), 0) AS total FROM user_games"
+        )
+        feed_rows = await _fetch(
+            conn,
+            """
+            SELECT pg.id AS platform_game_id, pg.name, pg.platform,
+                   pg.icon_url, pg.sgdb_cover_url, ig.cover_url AS igdb_cover_url,
+                   ua.unlocked_at::date AS day,
+                   COUNT(*) AS cnt,
+                   (array_remove(array_agg(a.icon_url ORDER BY ua.unlocked_at DESC), NULL))[1:6] AS icons
+            FROM user_achievements ua
+            JOIN achievements a ON a.id = ua.achievement_id
+            JOIN platform_games pg ON pg.id = a.platform_game_id
+            LEFT JOIN igdb_games ig ON ig.id = pg.igdb_id AND pg.igdb_id > 0
+            WHERE ua.unlocked = true AND ua.unlocked_at IS NOT NULL
+            GROUP BY pg.id, pg.name, pg.platform, pg.icon_url, pg.sgdb_cover_url,
+                     ig.cover_url, ua.unlocked_at::date
+            ORDER BY ua.unlocked_at::date DESC, cnt DESC
+            LIMIT 40
+            """,
+        )
+
+    # Streaks from distinct unlock days.
+    days = sorted({r["day"] for r in heatmap_rows})
+    day_set = set(days)
+    longest = cur = 0
+    prev = None
+    for d in days:
+        cur = cur + 1 if (prev and (d - prev).days == 1) else 1
+        longest = max(longest, cur)
+        prev = d
+    # Current streak: consecutive days ending today or yesterday.
+    current = 0
+    probe = date.today()
+    if probe not in day_set and (probe - timedelta(days=1)) in day_set:
+        probe = probe - timedelta(days=1)
+    while probe in day_set:
+        current += 1
+        probe -= timedelta(days=1)
+
+    return {
+        "heatmap": [{"day": r["day"].isoformat(), "count": r["cnt"]} for r in heatmap_rows],
+        "current_streak": current,
+        "longest_streak": longest,
+        "total_playtime_minutes": int(playtime_row["total"] or 0),
+        "feed": [
+            {
+                "platform_game_id": r["platform_game_id"],
+                "name": r["name"],
+                "platform": r["platform"],
+                "cover_url": r["sgdb_cover_url"] or r["igdb_cover_url"] or r["icon_url"],
+                "day": r["day"].isoformat(),
+                "count": r["cnt"],
+                "icons": r["icons"] or [],
+            }
+            for r in feed_rows
+        ],
+    }
+
+
 @app.get("/api/statistics/platform/{platform}")
 async def statistics_platform(platform: str):
     """Top games by completion for a platform, for the drilldown modal."""

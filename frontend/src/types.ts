@@ -89,6 +89,24 @@ export interface Account {
   credentials: Record<string, string>;
 }
 
+export interface ActivityFeedItem {
+  platform_game_id: number;
+  name: string;
+  platform: string;
+  cover_url: string | null;
+  day: string;
+  count: number;
+  icons: string[];
+}
+
+export interface Activity {
+  heatmap: { day: string; count: number }[];
+  current_streak: number;
+  longest_streak: number;
+  total_playtime_minutes: number;
+  feed: ActivityFeedItem[];
+}
+
 export interface SyncProgress {
   running: boolean;
   started_at: string | null;
