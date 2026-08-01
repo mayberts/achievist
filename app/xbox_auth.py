@@ -182,6 +182,28 @@ async def get_tokens(refresh_token: str) -> XboxTokens:
     return XboxTokens(xsts_token=xsts_token, user_hash=user_hash, xuid=xuid)
 
 
+async def resolve_gamertag(tokens: XboxTokens, gamertag: str) -> str:
+    """Resolve an Xbox gamertag to its XUID using the signed-in session."""
+    async with httpx.AsyncClient(timeout=15) as client:
+        resp = await client.get(
+            f"https://profile.xboxlive.com/users/gt({gamertag})/profile/settings",
+            params={"settings": "Gamertag"},
+            headers={
+                "Authorization": tokens.auth_header,
+                "x-xbl-contract-version": "3",
+                "Accept": "application/json",
+                "Accept-Language": "en-US",
+            },
+        )
+    if resp.status_code == 404:
+        raise RuntimeError(f"Xbox gamertag '{gamertag}' not found.")
+    resp.raise_for_status()
+    users = resp.json().get("profileUsers") or []
+    if not users or not users[0].get("id"):
+        raise RuntimeError(f"Xbox gamertag '{gamertag}' not found.")
+    return users[0]["id"]
+
+
 def load_refresh_token() -> str | None:
     try:
         return _TOKEN_FILE.read_text().strip() or None

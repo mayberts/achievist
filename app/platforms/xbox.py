@@ -28,19 +28,35 @@ class XboxPlatform(Platform):
     LABEL = "Xbox"
     AUTH_TYPE = "oauth"
     EXTERNAL_ID = "xbox"
+    CONNECT_FIELDS = [
+        {"name": "external_id", "label": "Xbox Gamertag", "type": "text", "required": False,
+         "help": "Your Xbox profile and achievement history must be set to public."},
+    ]
 
     async def sync(self, account: dict, conn) -> None:
-        from app.xbox_auth import get_tokens, load_refresh_token
+        from app.xbox_auth import get_tokens, load_refresh_token, resolve_gamertag
 
-        refresh_token = self.cred(account, "refresh_token") or config.XBOX_REFRESH_TOKEN or load_refresh_token()
+        # One backend Xbox sign-in authorizes all lookups (like Ubisoft's service
+        # session). Individual accounts can then be added by gamertag.
+        refresh_token = config.XBOX_REFRESH_TOKEN or load_refresh_token()
         if not refresh_token:
-            raise RuntimeError("Xbox not configured — hit /api/xbox-setup to authenticate")
+            raise RuntimeError("Xbox not signed in — use 'Sign in with Xbox' to connect the backend account.")
 
         tokens = await get_tokens(refresh_token)
-        xuid = tokens.xuid
         delay = config.REQUEST_DELAY_SECONDS
 
-        linked_id = await db.upsert_linked_account(conn, "xbox", xuid)
+        target = (account.get("external_id") or "").strip()
+        if not target or target.lower() == "xbox":
+            xuid = tokens.xuid            # the signed-in account itself
+            linked_ext = tokens.xuid
+        elif target.isdigit():
+            xuid = target                 # already an XUID
+            linked_ext = target
+        else:
+            xuid = await resolve_gamertag(tokens, target)  # gamertag → XUID
+            linked_ext = target
+
+        linked_id = await db.upsert_linked_account(conn, "xbox", linked_ext)
         earned_cache = await db.get_earned_counts(conn, linked_id)
 
         async with httpx.AsyncClient(timeout=30) as client:

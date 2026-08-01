@@ -31,6 +31,8 @@ export function ConnectModal({
         </div>
         {schema.key === "ubisoft" ? (
           <UbisoftFlow schema={schema} account={account} onConnected={onConnected} />
+        ) : schema.key === "xbox" ? (
+          <XboxFlow schema={schema} account={account} onConnected={onConnected} />
         ) : schema.auth_type === "oauth" ? (
           <OAuthFlow schema={schema} onConnected={onConnected} />
         ) : (
@@ -213,6 +215,58 @@ function UbisoftServiceLogin({ onSignedIn }: { onSignedIn: () => void }) {
       >
         {busy ? "Validating…" : "Save session"}
       </button>
+    </div>
+  );
+}
+
+function XboxFlow({
+  schema,
+  account,
+  onConnected,
+}: {
+  schema: PlatformSchema;
+  account?: Account;
+  onConnected: () => void;
+}) {
+  const [mode, setMode] = useState<"choose" | "oauth">("choose");
+  const [signedIn, setSignedIn] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    api.xboxServiceStatus().then((s) => setSignedIn(s.signed_in)).catch(() => setSignedIn(false));
+  }, []);
+
+  if (mode === "oauth") {
+    return <OAuthFlow schema={schema} onConnected={onConnected} />;
+  }
+
+  return (
+    <div className="space-y-4">
+      <p className="rounded-lg bg-ink-900 px-3 py-2 text-xs text-muted">
+        Make sure your profile and achievement history are set to <span className="font-semibold text-slate-300">public</span>.
+      </p>
+
+      <div className={signedIn === false ? "opacity-60" : ""}>
+        <FormFlow schema={schema} account={account} onConnected={onConnected} />
+        {signedIn === false && (
+          <p className="mt-2 text-xs text-warn">
+            Sign in with Xbox first (below) so the app can read public profiles.
+          </p>
+        )}
+      </div>
+
+      <div className="flex items-center gap-3 text-xs text-faint">
+        <span className="h-px flex-1 bg-line" /> or <span className="h-px flex-1 bg-line" />
+      </div>
+
+      <button
+        onClick={() => setMode("oauth")}
+        className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#107c10] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#0e6b0e]"
+      >
+        Sign in with Xbox
+      </button>
+      <p className="text-center text-xs text-faint">
+        Connects your own account and enables gamertag lookups.
+      </p>
     </div>
   );
 }
