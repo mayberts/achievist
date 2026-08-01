@@ -31,6 +31,11 @@ export const PLATFORM_META: Record<string, PlatformMeta> = {
     label: "Ubisoft",
     badge: "bg-[#0a0a2e] text-[#3a9fe8] border-[#0070d1]",
   },
+  epic: {
+    label: "Epic Games",
+    badge: "bg-[#121212] text-[#e6e6e6] border-[#3a3a3a]",
+    storeUrl: (g) => (g.store_id ? `https://store.epicgames.com/p/${g.store_id}` : "https://store.epicgames.com/"),
+  },
 };
 
 export function platformLabel(platform: string): string {
