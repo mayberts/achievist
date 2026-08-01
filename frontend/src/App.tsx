@@ -6,6 +6,7 @@ import { Nav, type Tab } from "./components/Nav";
 import { SummaryBar } from "./components/SummaryBar";
 import { BackToTop } from "./components/BackToTop";
 import { GamesPage } from "./pages/GamesPage";
+import { ActivityPage } from "./pages/ActivityPage";
 import { AccountsPage } from "./pages/AccountsPage";
 
 // Statistics pulls in recharts (~340 kB); load it only when the tab is opened.
@@ -86,6 +87,7 @@ export default function App() {
 
         <div className="mt-6">
           {tab === "games" && <GamesPage summary={summary} />}
+          {tab === "activity" && <ActivityPage />}
           {tab === "accounts" && <AccountsPage />}
           {tab === "statistics" && (
             <Suspense fallback={<div className="py-16 text-center text-muted">Loading…</div>}>

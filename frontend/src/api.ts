@@ -1,6 +1,7 @@
 import type {
   Account,
   Achievement,
+  Activity,
   GameDetail,
   GamesResponse,
   PlatformSchema,
@@ -62,6 +63,8 @@ export const api = {
     send<{ id: number; status: string }>("/api/accounts", "POST", body),
   disconnectAccount: (id: number) => send<void>(`/api/accounts/${id}`, "DELETE"),
   syncAccount: (id: number) => send<{ status: string }>(`/api/accounts/${id}/sync`, "POST"),
+
+  activity: () => get<Activity>("/api/activity"),
 
   syncAll: () => send<{ status: string }>("/api/sync", "POST"),
   syncProgress: () => get<SyncProgress>("/api/sync/progress"),
