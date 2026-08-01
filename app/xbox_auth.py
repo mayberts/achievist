@@ -31,12 +31,11 @@ _MS_TOKEN_URL = "https://login.microsoftonline.com/consumers/oauth2/v2.0/token"
 _XBL_URL = "https://user.auth.xboxlive.com/user/authenticate"
 _XSTS_URL = "https://xsts.auth.xboxlive.com/xsts/authorize"
 
-# Public client ID (Minecraft's Azure AAD app) registered for the v2.0
-# consumers device-code flow with the XboxLive.signin scope, so no Azure app
-# registration is needed out of the box. Override with XBOX_CLIENT_ID for your
-# own registered app.
-_DEFAULT_CLIENT_ID = "389b1b32-b5d5-43b2-bddc-84ce938d6737"
-_CLIENT_ID = os.getenv("XBOX_CLIENT_ID") or _DEFAULT_CLIENT_ID
+# Xbox sign-in uses the device-code flow, which Microsoft only allows for a
+# client you register yourself (a free, one-time Azure app). Hosted services
+# like Trophies Hunter register one app for all their users; a self-hosted app
+# needs its own. Set XBOX_CLIENT_ID to your app's client UUID.
+_CLIENT_ID = os.getenv("XBOX_CLIENT_ID", "")
 _SCOPE = "XboxLive.signin offline_access"
 
 _TOKEN_FILE = Path("/data/xbox_refresh_token.txt")
@@ -55,6 +54,13 @@ class XboxTokens:
 
 async def start_device_flow() -> dict:
     """Start device code flow. Returns dict with user_code, verification_uri, device_code, interval."""
+    if not _CLIENT_ID:
+        raise RuntimeError(
+            "Xbox sign-in needs a free one-time app registration. Go to portal.azure.com "
+            "→ App registrations → New registration (Personal Microsoft accounts, no redirect "
+            "URI), then Authentication → Allow public client flows → Yes. Set XBOX_CLIENT_ID "
+            "to the Application (client) ID."
+        )
     async with httpx.AsyncClient(timeout=15) as client:
         resp = await client.post(
             _DEVICE_CODE_URL,
