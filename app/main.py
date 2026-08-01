@@ -1155,6 +1155,35 @@ async def sync_account(account_id: int):
     return {"status": "started"}
 
 
+@app.post("/api/xbox-dedup")
+async def xbox_dedup():
+    """
+    Consolidate duplicate Xbox accounts: keep the linked account with the most
+    stored games and delete the others (removes duplicate library entries).
+    """
+    pool = await db.get_pool()
+    async with pool.connection() as conn:
+        rows = await _fetch(
+            conn,
+            """
+            SELECT la.id, la.external_id, COUNT(ug.id) AS games
+            FROM linked_accounts la
+            LEFT JOIN user_games ug ON ug.linked_account_id = la.id
+            WHERE la.platform = 'xbox'
+            GROUP BY la.id, la.external_id
+            ORDER BY games DESC
+            """,
+        )
+        if len(rows) <= 1:
+            return {"status": "ok", "removed": 0, "kept": rows[0]["external_id"] if rows else None}
+        keep = rows[0]
+        removed = []
+        for r in rows[1:]:
+            await db.delete_account(conn, r["id"])
+            removed.append(r["external_id"])
+    return {"status": "ok", "kept": keep["external_id"], "kept_games": keep["games"], "removed": removed}
+
+
 @app.post("/api/ubisoft-setup")
 async def ubisoft_setup(payload: dict):
     """
