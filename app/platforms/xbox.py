@@ -68,6 +68,29 @@ class XboxPlatform(Platform):
             data = resp.json()
             titles = data.get("titles") or []
 
+            # Xbox's titleHistory returns a separate titleId per platform release of
+            # the same game (e.g. console vs PC/Game Pass), which otherwise show up
+            # as visual duplicates. Keep only the "best" entry per name: the one
+            # with the most achievements earned, tie-broken by total achievements
+            # then most recent play.
+            def _sort_key(t: dict) -> tuple:
+                ach = t.get("achievement") or {}
+                hist = t.get("titleHistory") or {}
+                return (
+                    int(ach.get("currentAchievements") or 0),
+                    int(ach.get("totalAchievements") or 0),
+                    hist.get("lastTimePlayed") or "",
+                )
+
+            best_by_name: dict[str, dict] = {}
+            for t in titles:
+                name = (t.get("name") or "").strip().lower()
+                if not name:
+                    continue
+                if name not in best_by_name or _sort_key(t) > _sort_key(best_by_name[name]):
+                    best_by_name[name] = t
+            titles = list(best_by_name.values())
+
             for title in titles:
                 self._inc("games_seen")
                 title_id = str(title.get("titleId", ""))

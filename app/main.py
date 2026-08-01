@@ -1263,6 +1263,51 @@ async def xbox_dedup():
     return {"status": "ok", "kept": keep["external_id"], "kept_games": keep["games"], "removed": removed}
 
 
+@app.post("/api/xbox-dedup-games")
+async def xbox_dedup_games():
+    """
+    Merge duplicate Xbox games: Xbox's titleHistory returns a separate titleId
+    per platform release of the same game (e.g. console vs PC/Game Pass), which
+    show up as visual duplicates. For each set of platform_games sharing the
+    same (lowercased) name, keep the one with the most achievements earned and
+    delete the rest.
+    """
+    pool = await db.get_pool()
+    merged = []
+    async with pool.connection() as conn:
+        groups = await _fetch(
+            conn,
+            """
+            SELECT lower(pg.name) AS key, array_agg(pg.id) AS ids, array_agg(pg.name) AS names
+            FROM platform_games pg
+            WHERE pg.platform = 'xbox'
+            GROUP BY lower(pg.name)
+            HAVING COUNT(*) > 1
+            """,
+        )
+        for g in groups:
+            ids = g["ids"]
+            rows = await _fetch(
+                conn,
+                """
+                SELECT pg.id, COALESCE(MAX(ug.earned_achievements), 0) AS earned,
+                       COALESCE(MAX(ug.total_achievements), 0) AS total
+                FROM platform_games pg
+                LEFT JOIN user_games ug ON ug.platform_game_id = pg.id
+                WHERE pg.id = ANY(%s)
+                GROUP BY pg.id
+                ORDER BY earned DESC, total DESC
+                """,
+                ids,
+            )
+            keep_id = rows[0]["id"]
+            remove_ids = [r["id"] for r in rows[1:]]
+            if remove_ids:
+                await conn.execute("DELETE FROM platform_games WHERE id = ANY(%s)", (remove_ids,))
+            merged.append({"name": g["names"][0], "kept": keep_id, "removed": remove_ids})
+    return {"status": "ok", "merged": merged}
+
+
 @app.post("/api/ubisoft-setup")
 async def ubisoft_setup(payload: dict):
     """
