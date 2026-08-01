@@ -1179,6 +1179,10 @@ async def epic_debug(account_id: str, product_id: str = "d0adc5e2b61948fa9a98608
     out: dict = {}
     async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
         for label, body in [
+            ("player_profile", q(
+                "playerProfile",
+                {"epicAccountId": account_id},
+                "ff954147a23d38a0e5b050962d442099487da001a0ab4b10ccbec8ac49755b3c")),
             ("player_achievements", q(
                 "playerProfileAchievementsByProductId",
                 {"epicAccountId": account_id, "productId": product_id},
@@ -1190,7 +1194,7 @@ async def epic_debug(account_id: str, product_id: str = "d0adc5e2b61948fa9a98608
         ]:
             try:
                 r = await client.post(url, json=body, headers=headers)
-                out[label] = {"status": r.status_code, "body": r.text[:900]}
+                out[label] = {"status": r.status_code, "body": r.text[:2500]}
             except Exception as e:
                 out[label] = {"error": str(e)}
     return out
