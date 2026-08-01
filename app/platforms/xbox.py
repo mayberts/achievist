@@ -47,16 +47,15 @@ class XboxPlatform(Platform):
 
         target = (account.get("external_id") or "").strip()
         if not target or target.lower() == "xbox":
-            xuid = tokens.xuid            # the signed-in account itself
-            linked_ext = tokens.xuid
+            xuid = tokens.xuid                                # the signed-in account itself
         elif target.isdigit():
-            xuid = target                 # already an XUID
-            linked_ext = target
+            xuid = target                                     # already an XUID
         else:
-            xuid = await resolve_gamertag(tokens, target)  # gamertag → XUID
-            linked_ext = target
+            xuid = await resolve_gamertag(tokens, target)     # gamertag → XUID
 
-        linked_id = await db.upsert_linked_account(conn, "xbox", linked_ext)
+        # Always key data by XUID so the same person added via sign-in and/or a
+        # gamertag collapses into one account instead of duplicating the library.
+        linked_id = await db.upsert_linked_account(conn, "xbox", xuid)
         earned_cache = await db.get_earned_counts(conn, linked_id)
 
         async with httpx.AsyncClient(timeout=30) as client:
