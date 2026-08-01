@@ -86,6 +86,21 @@ export function GamesPage({ summary }: { summary: Summary | null }) {
 
   const hasMore = games.length < total;
 
+  // Infinite scroll: auto-load the next page when the sentinel scrolls into view.
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el || !hasMore) return;
+    const obs = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && !loading) load(page + 1, false);
+      },
+      { rootMargin: "600px" },
+    );
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, [hasMore, loading, page, load]);
+
   return (
     <div>
       {/* toolbar */}
@@ -176,16 +191,10 @@ export function GamesPage({ summary }: { summary: Summary | null }) {
         <div className="py-16 text-center text-muted">No games match your filters.</div>
       )}
 
-      {hasMore && (
-        <div className="mt-6 flex justify-center">
-          <button
-            onClick={() => load(page + 1, false)}
-            disabled={loading}
-            className="rounded-lg border border-line bg-ink-850 px-5 py-2.5 text-sm font-medium text-slate-200 transition hover:bg-ink-800 disabled:opacity-50"
-          >
-            {loading ? "Loading…" : "Load more"}
-          </button>
-        </div>
+      {/* infinite-scroll sentinel + loading indicator */}
+      {hasMore && <div ref={sentinelRef} className="h-1" />}
+      {loading && games.length > 0 && (
+        <div className="mt-6 text-center text-sm text-muted">Loading…</div>
       )}
 
       {selected !== null && (

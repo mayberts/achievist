@@ -4,6 +4,7 @@ import { api } from "./api";
 import type { Summary, SyncProgress } from "./types";
 import { Nav, type Tab } from "./components/Nav";
 import { SummaryBar } from "./components/SummaryBar";
+import { BackToTop } from "./components/BackToTop";
 import { GamesPage } from "./pages/GamesPage";
 import { AccountsPage } from "./pages/AccountsPage";
 
@@ -93,6 +94,7 @@ export default function App() {
           )}
         </div>
       </div>
+      <BackToTop />
     </div>
   );
 }
