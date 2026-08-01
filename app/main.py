@@ -1155,6 +1155,47 @@ async def sync_account(account_id: int):
     return {"status": "started"}
 
 
+@app.get("/api/epic-debug")
+async def epic_debug(account_id: str, product_id: str = "d0adc5e2b61948fa9a986082d174e14c",
+                     sandbox_id: str = "9d2f484bbec64aa8ad234b3199dcaf1c"):
+    """
+    Test whether the Epic Store GraphQL (public profile achievements) is reachable
+    server-side, or blocked by Cloudflare. Uses persisted queries (no auth).
+    """
+    url = "https://store.epicgames.com/graphql"
+    headers = {
+        "Content-Type": "application/json",
+        "Origin": "https://store.epicgames.com",
+        "Referer": f"https://store.epicgames.com/u/{account_id}",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                      "(KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36",
+        "X-Requested-With": "XMLHttpRequest",
+    }
+
+    def q(op, variables, sha):
+        return {"operationName": op, "variables": variables,
+                "extensions": {"persistedQuery": {"version": 1, "sha256Hash": sha}}}
+
+    out: dict = {}
+    async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
+        for label, body in [
+            ("player_achievements", q(
+                "playerProfileAchievementsByProductId",
+                {"epicAccountId": account_id, "productId": product_id},
+                "70ff714976f88a85aafa3cb5abb9909d52e12a3ff585d7b49550d2493a528fb0")),
+            ("achievement_defs", q(
+                "Achievement",
+                {"sandboxId": sandbox_id, "locale": "en-US"},
+                "9284d2fe200e351d1496feda728db23bb52bfd379b236fc3ceca746c1f1b33f2")),
+        ]:
+            try:
+                r = await client.post(url, json=body, headers=headers)
+                out[label] = {"status": r.status_code, "body": r.text[:900]}
+            except Exception as e:
+                out[label] = {"error": str(e)}
+    return out
+
+
 @app.post("/api/xbox-dedup")
 async def xbox_dedup():
     """
