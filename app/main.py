@@ -1183,6 +1183,10 @@ async def epic_debug(account_id: str, product_id: str = "d0adc5e2b61948fa9a98608
                 "playerProfile",
                 {"epicAccountId": account_id},
                 "ff954147a23d38a0e5b050962d442099487da001a0ab4b10ccbec8ac49755b3c")),
+            ("player_profile_private", q(
+                "playerProfilePrivate",
+                {"epicAccountId": account_id, "locale": "en-US", "page": 1, "accountId": account_id},
+                "47d0391fa5ec42d829e4a03f399cb586a29cf3cebd940cc4747aed0192c61114")),
             ("player_achievements", q(
                 "playerProfileAchievementsByProductId",
                 {"epicAccountId": account_id, "productId": product_id},
