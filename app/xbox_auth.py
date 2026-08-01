@@ -31,10 +31,11 @@ _MS_TOKEN_URL = "https://login.microsoftonline.com/consumers/oauth2/v2.0/token"
 _XBL_URL = "https://user.auth.xboxlive.com/user/authenticate"
 _XSTS_URL = "https://xsts.auth.xboxlive.com/xsts/authorize"
 
-# Public first-party client ID that supports the device-code flow with the
-# XboxLive.signin scope, so no Azure app registration is needed out of the box.
-# Override with XBOX_CLIENT_ID if you have your own registered app.
-_DEFAULT_CLIENT_ID = "00000000402b5328"
+# Public client ID (Minecraft's Azure AAD app) registered for the v2.0
+# consumers device-code flow with the XboxLive.signin scope, so no Azure app
+# registration is needed out of the box. Override with XBOX_CLIENT_ID for your
+# own registered app.
+_DEFAULT_CLIENT_ID = "389b1b32-b5d5-43b2-bddc-84ce938d6737"
 _CLIENT_ID = os.getenv("XBOX_CLIENT_ID") or _DEFAULT_CLIENT_ID
 _SCOPE = "XboxLive.signin offline_access"
 
