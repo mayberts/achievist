@@ -1220,6 +1220,13 @@ async def ubisoft_service_ticket(payload: dict):
             "message": "Ubisoft service session saved. You can now add accounts by username."}
 
 
+@app.get("/api/xbox-service-status")
+async def xbox_service_status():
+    """Whether a backend Xbox sign-in exists (so gamertag lookups can work)."""
+    from app.xbox_auth import load_refresh_token
+    return {"signed_in": bool(config.XBOX_REFRESH_TOKEN or load_refresh_token())}
+
+
 @app.get("/api/xbox-setup")
 async def xbox_setup():
     """Start device code flow. Returns a user_code to enter at microsoft.com/devicelogin."""
