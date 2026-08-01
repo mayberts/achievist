@@ -1249,30 +1249,32 @@ async def ubisoft_debug(username: str):
                 except Exception as e:
                     return {"url": full_url, "appid": appid, "params": params, "error": str(e)}
 
-            # Candidate Ubisoft App IDs to try against the "challenges" (modern
-            # achievements) endpoints, which 403'd for our app ids.
+            # App IDs that behaved differently (314d4fef got past the gateway to
+            # an IIS backend), plus the Uplay overlay / R6 client ids.
             appids = [
-                club_appid,
-                web_appid,
                 "314d4fef-e568-454a-ae06-43e3bece12a6",  # Uplay PC
+                "39baebad-39e5-4552-8c25-2c9b919064e2",  # R6 Siege
+                "f35adcb5-1911-440c-b1c9-48fdc1701c68",  # Uplay overlay?
                 "e3d5ea9e-50bd-43b7-88bf-39794f4e3d40",  # PC client
-                "f68a4bb5-608a-4ff2-8123-be8ef797e0a6",  # app id seen in gamesplayed
-                "685a3038-2b04-47ee-9c5a-6403381a46aa",  # R6 stats
-                "3587dcbb-7f81-457c-9781-0e3f29f6f56a",
+                club_appid,
             ]
-            # Use one real game space (not the Uplay client) for challenges probes.
             game_space = spaces[-1] if len(spaces) > 1 else spaces[0]
 
+            def paths(sid: str, pid: str) -> list:
+                return [
+                    (f"{msr}/v1/spaces/{sid}/club/challenges", None),
+                    (f"{msr}/v3/spaces/{sid}/club/challenges", None),
+                    (f"{msr}/v1/spaces/{sid}/challenges", None),
+                    (f"{msr}/v1/spaces/{sid}/rewards", None),
+                    (f"{msr}/v1/profiles/{pid}/club/challenges", {"spaceId": sid}),
+                    (f"{msr}/v1/profiles/{pid}/club/rewards", {"spaceId": sid}),
+                    (f"{msr}/v1/profiles/{pid}/challenges", {"spaceId": sid}),
+                    (f"{msr}/v3/profiles/{pid}/club/actions", {"spaceId": sid}),
+                ]
+
             results = []
-            # 1) modern-achievement candidates across many app ids
             for appid in appids:
-                for full_url, params in [
-                    (f"{msr}/v1/spaces/{game_space}/club/challenges", None),
-                    (f"{base}/v1/profiles/{profile_id}/challenges/progressions", {"spaceId": game_space}),
-                    (f"{msr}/v1/profiles/{profile_id}/challenges/progressions", {"spaceId": game_space}),
-                    (f"{msr}/v1/spaces/{game_space}/challenges", None),
-                    (f"{base}/v1/spaces/{game_space}/challenges", None),
-                ]:
+                for full_url, params in paths(game_space, profile_id):
                     results.append(await probe(full_url, appid, params))
             out["game_space_probed"] = game_space
             out["results"] = results
