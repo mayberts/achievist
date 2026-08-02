@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState, useCallback } from "react";
-import { Search, List, LayoutGrid } from "lucide-react";
+import { Search, List, LayoutGrid, Gamepad2 } from "lucide-react";
 import { api } from "../api";
 import type { Game, Summary } from "../types";
 import { GameCard } from "../components/GameCard";
 import { GameRow } from "../components/GameRow";
+import { GameCardSkeleton, GameRowSkeleton } from "../components/Skeleton";
 import { GameDetailModal } from "../components/GameDetailModal";
 import { platformLabel } from "../lib/platforms";
 
@@ -30,6 +31,8 @@ export function GamesPage({ summary }: { summary: Summary | null }) {
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(false);
+  const [initialLoading, setInitialLoading] = useState(true);
+  const [hasAnyAccount, setHasAnyAccount] = useState<boolean | null>(null);
 
   const [selected, setSelected] = useState<number | null>(null);
   const [view, setView] = useState<ViewMode>(
@@ -50,7 +53,12 @@ export function GamesPage({ summary }: { summary: Summary | null }) {
   // appears immediately), unioned with any platforms that already have games.
   const [accountPlatforms, setAccountPlatforms] = useState<string[]>([]);
   useEffect(() => {
-    api.accounts().then((a) => setAccountPlatforms(a.map((x) => x.platform))).catch(() => {});
+    api.accounts()
+      .then((a) => {
+        setAccountPlatforms(a.map((x) => x.platform));
+        setHasAnyAccount(a.length > 0);
+      })
+      .catch(() => setHasAnyAccount(false));
   }, []);
 
   const platforms = Array.from(
@@ -84,6 +92,7 @@ export function GamesPage({ summary }: { summary: Summary | null }) {
         });
       } finally {
         setLoading(false);
+        setInitialLoading(false);
       }
     },
     [sort, platform, completion, searchDebounced],
@@ -183,7 +192,13 @@ export function GamesPage({ summary }: { summary: Summary | null }) {
       </div>
 
       {/* games */}
-      {view === "grid" ? (
+      {initialLoading ? (
+        <div className={view === "grid" ? "grid grid-cols-1 gap-3 lg:grid-cols-2" : "flex flex-col gap-1.5"}>
+          {Array.from({ length: 8 }).map((_, i) =>
+            view === "grid" ? <GameCardSkeleton key={i} /> : <GameRowSkeleton key={i} />,
+          )}
+        </div>
+      ) : view === "grid" ? (
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
           {games.map((g) => (
             <GameCard key={g.platform_game_id} game={g} onClick={() => setSelected(g.platform_game_id)} />
@@ -197,13 +212,23 @@ export function GamesPage({ summary }: { summary: Summary | null }) {
         </div>
       )}
 
-      {games.length === 0 && !loading && (
-        <div className="py-16 text-center text-muted">No games match your filters.</div>
+      {!initialLoading && games.length === 0 && !loading && (
+        <div className="py-16 text-center">
+          <Gamepad2 size={32} className="mx-auto mb-3 text-faint" />
+          {hasAnyAccount === false ? (
+            <>
+              <div className="text-muted">No accounts connected yet.</div>
+              <div className="mt-1 text-sm text-faint">Head to the Accounts tab to connect a platform.</div>
+            </>
+          ) : (
+            <div className="text-muted">No games match your filters.</div>
+          )}
+        </div>
       )}
 
       {/* infinite-scroll sentinel + loading indicator */}
       {hasMore && <div ref={sentinelRef} className="h-1" />}
-      {loading && games.length > 0 && (
+      {loading && !initialLoading && games.length > 0 && (
         <div className="mt-6 text-center text-sm text-muted">Loading…</div>
       )}
 

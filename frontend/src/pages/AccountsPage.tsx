@@ -5,13 +5,16 @@ import type { Account, PlatformSchema } from "../types";
 import { platformLabel } from "../lib/platforms";
 import { fmtRelative } from "../lib/format";
 import { ConnectModal } from "../components/ConnectModal";
+import { AccountCardSkeleton } from "../components/Skeleton";
+import { useToast } from "../components/Toast";
 
 export function AccountsPage() {
   const [schemas, setSchemas] = useState<PlatformSchema[]>([]);
-  const [accounts, setAccounts] = useState<Account[]>([]);
+  const [accounts, setAccounts] = useState<Account[] | null>(null);
   const [connecting, setConnecting] = useState<PlatformSchema | null>(null);
   const [editingAccount, setEditingAccount] = useState<Account | undefined>(undefined);
   const [syncing, setSyncing] = useState<number | null>(null);
+  const toast = useToast();
 
   async function refresh() {
     const [s, a] = await Promise.all([api.platforms(), api.accounts()]);
@@ -23,18 +26,26 @@ export function AccountsPage() {
     refresh();
   }, []);
 
-  const byPlatform = new Map(accounts.map((a) => [a.platform, a]));
+  const byPlatform = new Map((accounts ?? []).map((a) => [a.platform, a]));
 
-  async function disconnect(id: number) {
+  async function disconnect(id: number, label: string) {
     if (!confirm("Disconnect this account? Its synced games and achievements will be removed.")) return;
-    await api.disconnectAccount(id);
-    refresh();
+    try {
+      await api.disconnectAccount(id);
+      toast.success(`${label} disconnected`);
+      refresh();
+    } catch (e) {
+      toast.error(String(e instanceof Error ? e.message : e));
+    }
   }
 
-  async function syncOne(id: number) {
+  async function syncOne(id: number, label: string) {
     setSyncing(id);
     try {
       await api.syncAccount(id);
+      toast.info(`Syncing ${label}…`);
+    } catch (e) {
+      toast.error(String(e instanceof Error ? e.message : e));
     } finally {
       setTimeout(() => setSyncing(null), 1500);
     }
@@ -46,7 +57,9 @@ export function AccountsPage() {
       <p className="mb-5 text-sm text-muted">Connect and manage the platforms you sync achievements from.</p>
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {schemas.map((schema) => {
+        {accounts === null
+          ? Array.from({ length: 6 }).map((_, i) => <AccountCardSkeleton key={i} />)
+          : schemas.map((schema) => {
           const acct = byPlatform.get(schema.key);
           return (
             <div key={schema.key} className="rounded-card border border-line bg-ink-850 p-4">
@@ -80,7 +93,7 @@ export function AccountsPage() {
                   )}
                   <div className="mt-3 flex gap-2">
                     <button
-                      onClick={() => syncOne(acct.id)}
+                      onClick={() => syncOne(acct.id, platformLabel(schema.key))}
                       disabled={syncing === acct.id}
                       className="inline-flex items-center gap-1.5 rounded-lg border border-line bg-ink-800 px-3 py-1.5 text-xs font-medium text-slate-200 transition hover:bg-ink-700 disabled:opacity-50"
                     >
@@ -97,7 +110,7 @@ export function AccountsPage() {
                       Edit
                     </button>
                     <button
-                      onClick={() => disconnect(acct.id)}
+                      onClick={() => disconnect(acct.id, platformLabel(schema.key))}
                       className="ml-auto inline-flex items-center rounded-lg border border-line bg-ink-800 px-2.5 py-1.5 text-xs text-red-400 transition hover:bg-red-950/40"
                     >
                       <Trash2 size={13} />
@@ -129,8 +142,10 @@ export function AccountsPage() {
             setEditingAccount(undefined);
           }}
           onConnected={() => {
+            const label = platformLabel(connecting.key);
             setConnecting(null);
             setEditingAccount(undefined);
+            toast.success(`${label} connected`);
             refresh();
           }}
         />

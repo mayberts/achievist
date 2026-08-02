@@ -5,6 +5,7 @@ import type { Achievement, GameDetail } from "../types";
 import { fmtPlaytime, fmtDate, fmtNum } from "../lib/format";
 import { PlatformBadge } from "./PlatformBadge";
 import { PLATFORM_META } from "../lib/platforms";
+import { RARITY_TIER_CLASS, rarityTier } from "../lib/rarity";
 
 function banner(g: GameDetail): string | null {
   return g.sgdb_cover_url || g.igdb_cover_url || g.icon_url || null;
@@ -14,14 +15,6 @@ function hltb(h: number | null): string | null {
   if (!h || h <= 0) return null;
   return `${h}h`;
 }
-
-const RARITY_COLOR: Record<string, string> = {
-  Legendary: "text-amber-400",
-  Epic: "text-fuchsia-400",
-  Rare: "text-sky-400",
-  Uncommon: "text-emerald-400",
-  Common: "text-slate-400",
-};
 
 export function GameDetailModal({ gameId, onClose }: { gameId: number; onClose: () => void }) {
   const [game, setGame] = useState<GameDetail | null>(null);
@@ -182,7 +175,7 @@ export function GameDetailModal({ gameId, onClose }: { gameId: number; onClose: 
                     </div>
                     <div className="flex-shrink-0 text-right">
                       {a.rarity_pct != null && (
-                        <div className={`text-xs font-semibold ${RARITY_COLOR[rarityTier(a.rarity_pct)]}`}>
+                        <div className={`text-xs font-semibold ${RARITY_TIER_CLASS[rarityTier(a.rarity_pct)]}`}>
                           {a.rarity_pct}%
                         </div>
                       )}
@@ -199,12 +192,4 @@ export function GameDetailModal({ gameId, onClose }: { gameId: number; onClose: 
       </div>
     </div>
   );
-}
-
-function rarityTier(pct: number): string {
-  if (pct <= 1) return "Legendary";
-  if (pct <= 5) return "Epic";
-  if (pct <= 20) return "Rare";
-  if (pct <= 50) return "Uncommon";
-  return "Common";
 }
