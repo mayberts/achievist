@@ -1253,6 +1253,7 @@ async def connect_account(payload: dict):
             if field.get("required") and not merged.get(field["name"]):
                 raise HTTPException(status_code=400, detail=f"Missing required field: {field['label']}")
 
+        await db.delete_other_accounts_for_platform(conn, platform, str(external_id))
         account_id = await db.upsert_account(conn, platform, str(external_id), merged)
     return {"id": account_id, "status": "connected"}
 

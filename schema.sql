@@ -19,6 +19,14 @@ ALTER TABLE linked_accounts ADD COLUMN IF NOT EXISTS credentials JSONB NOT NULL 
 ALTER TABLE linked_accounts ADD COLUMN IF NOT EXISTS status      TEXT DEFAULT 'connected';
 ALTER TABLE linked_accounts ADD COLUMN IF NOT EXISTS last_error  TEXT;
 
+-- This app supports one account per platform, but the (platform, external_id)
+-- unique constraint above didn't prevent orphaned duplicates from piling up
+-- when a reconnect resolved to a different external_id. Keep only the most
+-- recently created row per platform.
+DELETE FROM linked_accounts a
+USING linked_accounts b
+WHERE a.platform = b.platform AND a.id < b.id;
+
 CREATE TABLE IF NOT EXISTS igdb_games (
     id                  BIGINT PRIMARY KEY,  -- IGDB id
     name                TEXT NOT NULL,
