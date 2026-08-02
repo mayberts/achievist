@@ -71,7 +71,17 @@ export function GamesPage({ summary }: { summary: Summary | null }) {
         });
         setTotal(res.total);
         setPage(res.page);
-        setGames((prev) => (replace ? res.games : [...prev, ...res.games]));
+        setGames((prev) => {
+          const base = replace ? [] : prev;
+          const seen = new Set(base.map((g) => g.platform_game_id));
+          const merged = [...base];
+          for (const g of res.games) {
+            if (seen.has(g.platform_game_id)) continue;
+            seen.add(g.platform_game_id);
+            merged.push(g);
+          }
+          return merged;
+        });
       } finally {
         setLoading(false);
       }
