@@ -9,7 +9,7 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from app import config, db
+from app import backup, config, db
 from app.db import _fetch, _fetchrow
 from app.platforms import PLATFORMS
 
@@ -349,6 +349,7 @@ async def lifespan(app: FastAPI):
     asyncio.create_task(_enrich_sgdb())
 
     _scheduler.add_job(run_sync, "interval", hours=config.SYNC_INTERVAL_HOURS)
+    _scheduler.add_job(backup.create_backup_safe, "interval", hours=config.BACKUP_INTERVAL_HOURS)
     _scheduler.start()
 
     yield
@@ -1127,6 +1128,48 @@ async def trigger_sync():
         raise HTTPException(status_code=409, detail="Sync already in progress")
     asyncio.create_task(run_sync())
     return {"status": "started"}
+
+
+# ── Backups ───────────────────────────────────────────────────────────────────
+# Everything Pantheon knows — synced achievements and connected-account
+# credentials alike — lives in Postgres, so a pg_dump backup covers all of it.
+
+@app.get("/api/backups")
+async def get_backups():
+    return {
+        "backups": backup.list_backups(),
+        "keep_count": config.BACKUP_KEEP_COUNT,
+        "interval_hours": config.BACKUP_INTERVAL_HOURS,
+    }
+
+
+@app.post("/api/backups", status_code=201)
+async def create_backup_now():
+    try:
+        path = await backup.create_backup()
+    except RuntimeError as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    return {"filename": path.name}
+
+
+@app.get("/api/backups/{filename}")
+async def download_backup(filename: str):
+    try:
+        path = backup.resolve_backup_path(filename)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid backup filename")
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="Backup not found")
+    return FileResponse(path, filename=filename, media_type="application/octet-stream")
+
+
+@app.delete("/api/backups/{filename}", status_code=204)
+async def remove_backup(filename: str):
+    try:
+        backup.delete_backup(filename)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid backup filename")
+    return None
 
 
 # ── Connected-account management ─────────────────────────────────────────────

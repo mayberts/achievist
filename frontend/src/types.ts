@@ -107,6 +107,18 @@ export interface Activity {
   feed: ActivityFeedItem[];
 }
 
+export interface BackupInfo {
+  filename: string;
+  size_bytes: number;
+  created_at: string;
+}
+
+export interface BackupsResponse {
+  backups: BackupInfo[];
+  keep_count: number;
+  interval_hours: number;
+}
+
 export interface SyncProgress {
   running: boolean;
   started_at: string | null;

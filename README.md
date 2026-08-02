@@ -74,6 +74,33 @@ Copy `.env.example` to `.env` for these — none are required to start the app:
 | `IGDB_CLIENT_ID` / `IGDB_CLIENT_SECRET` | Portrait cover art fallback (Twitch dev app) |
 | `SGDB_API_KEY` | SteamGridDB landscape cover art (preferred over IGDB) |
 | `EXOPHASE_*` | Xbox 360 locked-achievement import from exophase.com |
+| `BACKUP_KEEP_COUNT`, `BACKUP_INTERVAL_HOURS` | Backup retention count / schedule (defaults: 14 kept, every 24h) |
+
+## Backups
+
+Everything Pantheon knows — synced games/achievements *and* connected-account
+credentials — lives in a single Postgres database, so backups are a `pg_dump`
+away. This happens automatically:
+
+- A `pg_dump -Fc` runs on a schedule (`BACKUP_INTERVAL_HOURS`, default 24h) and
+  is written to a `/backups` volume, keeping the most recent `BACKUP_KEEP_COUNT`
+  (default 14).
+- The **Accounts** page has a **Backups** section to trigger a backup on
+  demand, download any backup, or delete old ones.
+- The same is available directly: `POST /api/backups` (create), `GET
+  /api/backups` (list), `GET /api/backups/{filename}` (download), `DELETE
+  /api/backups/{filename}` (delete).
+
+**Restore** a downloaded `.dump` file into a running stack:
+
+```sh
+docker compose exec -T db pg_restore -U pantheon -d pantheon --clean --if-exists < backup.dump
+```
+
+**Security note:** backup files contain plaintext account credentials (API
+keys, tokens) for every connected platform. Treat them like secrets — store
+downloaded copies somewhere access-controlled, not in a shared or public
+location.
 
 ## Cover art priority
 
@@ -100,6 +127,8 @@ The frontend is a full SPA; these are the main endpoints it talks to (see `app/m
 | POST | `/api/accounts/{id}/sync` | Sync a single account |
 | POST | `/api/sync` | Sync all accounts (202, or 409 if busy) |
 | GET | `/api/sync/progress` | Live sync status |
+| GET / POST | `/api/backups` | List backups / trigger one now |
+| GET / DELETE | `/api/backups/{filename}` | Download / delete a backup |
 
 ## Development
 
