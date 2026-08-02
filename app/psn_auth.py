@@ -20,7 +20,7 @@ log = logging.getLogger(__name__)
 # Well-known public PSN "PlayStation App" OAuth client, used by the PSN API
 # community (psn-api, PSNAWP) — not a per-user secret.
 _CLIENT_ID = "09515159-7237-4370-9b40-3806e67c0891"
-_CLIENT_SECRET = "ur18Wd9kup1a3AoZgTM6dqAtVo3T7RiHo6D9Zwg"
+_CLIENT_SECRET = "ucPjka5tntB2KqsP"
 _REDIRECT_URI = "com.scee.psxandroid.scecompcall://redirect"
 
 _AUTH_URL = "https://ca.account.sony.com/api/authz/v3/oauth/authorize"
