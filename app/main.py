@@ -434,11 +434,15 @@ async def games(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=200),
 ):
+    # Every ordering ends with pg.id as a tiebreaker so paginated results are
+    # stable even when many rows share the same sort value (e.g. identical
+    # last_played_at) — otherwise Postgres can return the same row on two
+    # different pages, causing duplicates in infinite scroll.
     order = {
-        "completion": "ug.completion_pct DESC, ug.earned_achievements DESC",
-        "recent": "ug.last_played_at DESC NULLS LAST",
-        "playtime": "ug.playtime_minutes DESC",
-        "name": "pg.name ASC",
+        "completion": "ug.completion_pct DESC, ug.earned_achievements DESC, pg.id",
+        "recent": "ug.last_played_at DESC NULLS LAST, pg.id",
+        "playtime": "ug.playtime_minutes DESC, pg.id",
+        "name": "pg.name ASC, pg.id",
     }[sort]
 
     filters = ["ug.total_achievements > 0"]
