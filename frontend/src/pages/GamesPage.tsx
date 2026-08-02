@@ -124,12 +124,12 @@ export function GamesPage({ summary }: { summary: Summary | null }) {
     <div>
       {/* toolbar */}
       <div className="mb-4 flex flex-wrap items-center gap-2">
-        <div className="flex rounded-lg border border-line bg-ink-850 p-1">
+        <div className="flex max-w-full overflow-x-auto rounded-lg border border-line bg-ink-850 p-1">
           {SORTS.map((s) => (
             <button
               key={s.key}
               onClick={() => setSort(s.key)}
-              className={`rounded-md px-3 py-1.5 text-sm font-medium transition ${
+              className={`flex-shrink-0 whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium transition ${
                 sort === s.key ? "bg-ink-700 text-slate-100" : "text-muted hover:text-slate-200"
               }`}
             >
@@ -159,13 +159,13 @@ export function GamesPage({ summary }: { summary: Summary | null }) {
           ))}
         </select>
 
-        <div className="ml-auto flex items-center gap-2 rounded-lg border border-line bg-ink-850 px-3 py-2">
+        <div className="flex w-full items-center gap-2 rounded-lg border border-line bg-ink-850 px-3 py-2 sm:ml-auto sm:w-auto">
           <Search size={15} className="text-faint" />
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search games…"
-            className="w-44 bg-transparent text-sm text-slate-100 outline-none placeholder:text-faint"
+            className="w-full bg-transparent text-sm text-slate-100 outline-none placeholder:text-faint sm:w-44"
           />
         </div>
 

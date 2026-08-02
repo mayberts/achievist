@@ -69,12 +69,16 @@ export function GameDetailModal({ gameId, onClose }: { gameId: number; onClose: 
           >
             <X size={18} />
           </button>
-          <div className="relative flex gap-4 p-5">
+          <div className="relative flex flex-col gap-4 p-4 sm:flex-row sm:p-5">
             {art && (
-              <img src={art} alt="" className="h-24 w-40 flex-shrink-0 rounded-md object-cover ring-1 ring-black/40" />
+              <img
+                src={art}
+                alt=""
+                className="h-32 w-full flex-shrink-0 rounded-md object-cover ring-1 ring-black/40 sm:h-24 sm:w-40"
+              />
             )}
             <div className="min-w-0 flex-1">
-              <h2 className="text-xl font-bold text-slate-100">{game?.name ?? "…"}</h2>
+              <h2 className="text-lg font-bold text-slate-100 sm:text-xl">{game?.name ?? "…"}</h2>
               <div className="mt-2 flex flex-wrap items-center gap-3 text-sm text-muted">
                 <span className="inline-flex items-center gap-1">
                   <Trophy size={14} className="text-faint" />
