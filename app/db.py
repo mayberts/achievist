@@ -126,6 +126,19 @@ async def set_account_status(conn, account_id: int, status: str,
     )
 
 
+async def delete_other_accounts_for_platform(conn, platform: str, keep_external_id: str) -> None:
+    """
+    This app supports one account per platform. If a reconnect resolves to a
+    different external_id than before (e.g. Ubisoft/PSN re-resolving a
+    username to a different profile id), drop the other row(s) for this
+    platform instead of leaving them as invisible, error-counted orphans.
+    """
+    await conn.execute(
+        "DELETE FROM linked_accounts WHERE platform = %s AND external_id != %s",
+        (platform, keep_external_id),
+    )
+
+
 async def delete_account(conn, account_id: int) -> None:
     """Remove a connected account and its synced data (FK cascade handles children)."""
     await conn.execute("DELETE FROM linked_accounts WHERE id = %s", (account_id,))
