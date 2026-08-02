@@ -4,9 +4,8 @@ export function Skeleton({ className = "" }: { className?: string }) {
 
 export function GameCardSkeleton() {
   return (
-    <div className="flex overflow-hidden rounded-card border border-line bg-ink-850 p-3">
-      <Skeleton className="h-16 w-28 flex-shrink-0" />
-      <div className="ml-3 flex-1 space-y-2 py-1">
+    <div className="h-32 overflow-hidden rounded-card border border-line bg-ink-850 p-4">
+      <div className="flex h-full max-w-md flex-col justify-center gap-2">
         <Skeleton className="h-4 w-3/4" />
         <Skeleton className="h-3 w-1/2" />
         <Skeleton className="h-1.5 w-full" />
