@@ -2,6 +2,7 @@ import type {
   Account,
   Achievement,
   Activity,
+  BackupsResponse,
   GameDetail,
   GamesResponse,
   PlatformSchema,
@@ -81,4 +82,10 @@ export const api = {
   psnServiceStatus: () => get<{ signed_in: boolean }>("/api/psn-service-status"),
   psnServiceTicket: (npsso: string) =>
     send<{ status: string }>("/api/psn-service-ticket", "POST", { npsso }),
+
+  // Backups
+  backups: () => get<BackupsResponse>("/api/backups"),
+  createBackup: () => send<{ filename: string }>("/api/backups", "POST"),
+  deleteBackup: (filename: string) =>
+    send<void>(`/api/backups/${encodeURIComponent(filename)}`, "DELETE"),
 };

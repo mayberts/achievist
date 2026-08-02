@@ -23,19 +23,18 @@ services:
     pull_policy: always
     environment:
       DATABASE_URL: postgresql://pantheon:pantheon@db:5432/pantheon
-      STEAM_API_KEY: ${STEAM_API_KEY}
-      STEAM_ID: ${STEAM_ID}
-      RA_USERNAME: ${RA_USERNAME:-}
-      RA_API_KEY: ${RA_API_KEY:-}
-      RA_TARGET_USER: ${RA_TARGET_USER:-}
-      XBOX_CLIENT_ID: ${XBOX_CLIENT_ID:-}
-      XBOX_REFRESH_TOKEN: ${XBOX_REFRESH_TOKEN:-}
+      # App-level enrichment keys (optional). Gaming accounts are managed in
+      # the web UI under Accounts and stored in the database, not here.
       IGDB_CLIENT_ID: ${IGDB_CLIENT_ID:-}
       IGDB_CLIENT_SECRET: ${IGDB_CLIENT_SECRET:-}
+      SGDB_API_KEY: ${SGDB_API_KEY:-}
       SYNC_INTERVAL_HOURS: ${SYNC_INTERVAL_HOURS:-12}
       REQUEST_DELAY_SECONDS: ${REQUEST_DELAY_SECONDS:-0.4}
+      BACKUP_KEEP_COUNT: ${BACKUP_KEEP_COUNT:-14}
+      BACKUP_INTERVAL_HOURS: ${BACKUP_INTERVAL_HOURS:-24}
     volumes:
       - /mnt/user/appdata/pantheon/data:/data
+      - /mnt/user/appdata/pantheon/backups:/backups
     ports:
       - "8744:8000"
     depends_on:

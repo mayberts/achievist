@@ -30,6 +30,7 @@ services:
       SGDB_API_KEY: ${SGDB_API_KEY:-}
     volumes:
       - pantheon-data:/data
+      - pantheon-backups:/backups
     ports:
       - "8744:8000"
     depends_on:
@@ -40,3 +41,4 @@ services:
 volumes:
   pantheon-db:
   pantheon-data:
+  pantheon-backups:
