@@ -19,29 +19,33 @@ export function Nav({
   accountErrors?: number;
 }) {
   return (
-    <nav className="flex gap-1">
-      {TABS.map((t) => (
-        <button
-          key={t.key}
-          onClick={() => onChange(t.key)}
-          className={`relative inline-flex items-center gap-2 rounded-lg px-3.5 py-2 text-sm font-medium transition ${
-            tab === t.key
-              ? "bg-ink-800 text-slate-100"
-              : "text-muted hover:bg-ink-850 hover:text-slate-200"
-          }`}
-        >
-          {t.icon}
-          {t.label}
-          {t.key === "accounts" && accountErrors > 0 && (
-            <span
-              className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white"
-              title={`${accountErrors} account${accountErrors > 1 ? "s" : ""} with sync errors`}
-            >
-              {accountErrors}
-            </span>
-          )}
-        </button>
-      ))}
-    </nav>
+    <div className="relative -mx-3 sm:mx-0">
+      <nav className="flex gap-1 overflow-x-auto px-3 sm:overflow-visible sm:px-0">
+        {TABS.map((t) => (
+          <button
+            key={t.key}
+            onClick={() => onChange(t.key)}
+            className={`relative inline-flex flex-shrink-0 items-center gap-2 rounded-lg px-3.5 py-2 text-sm font-medium transition ${
+              tab === t.key
+                ? "bg-ink-800 text-slate-100"
+                : "text-muted hover:bg-ink-850 hover:text-slate-200"
+            }`}
+          >
+            {t.icon}
+            {t.label}
+            {t.key === "accounts" && accountErrors > 0 && (
+              <span
+                className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white"
+                title={`${accountErrors} account${accountErrors > 1 ? "s" : ""} with sync errors`}
+              >
+                {accountErrors}
+              </span>
+            )}
+          </button>
+        ))}
+      </nav>
+      {/* hint that the tab bar scrolls, on narrow screens only */}
+      <div className="pointer-events-none absolute right-0 top-0 h-full w-8 bg-gradient-to-l from-ink-950 to-transparent sm:hidden" />
+    </div>
   );
 }

@@ -87,10 +87,10 @@ export default function App() {
 
   return (
     <div className="min-h-screen">
-      <div className="mx-auto max-w-6xl px-4 py-6">
+      <div className="mx-auto max-w-6xl px-3 py-4 sm:px-4 sm:py-6">
         {summary && <SummaryBar summary={summary} />}
 
-        <div className="mt-5 flex items-center justify-between gap-4">
+        <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <Nav
             tab={tab}
             onChange={(t) => {
@@ -102,7 +102,7 @@ export default function App() {
           <button
             onClick={syncAll}
             disabled={running}
-            className="inline-flex items-center gap-2 rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white transition hover:bg-accent/90 disabled:opacity-60"
+            className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white transition hover:bg-accent/90 disabled:opacity-60 sm:w-auto"
           >
             <RefreshCw size={15} className={running ? "animate-spin" : ""} />
             {running ? "Syncing…" : "Sync all"}
