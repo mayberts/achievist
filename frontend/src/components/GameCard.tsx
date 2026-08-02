@@ -22,14 +22,15 @@ export function GameCard({ game, onClick }: { game: Game; onClick?: () => void }
       onClick={onClick}
       className="group relative flex w-full overflow-hidden rounded-card border border-line bg-ink-850 text-left transition hover:border-ink-600 hover:bg-ink-800"
     >
-      {/* faded banner backdrop */}
+      {/* faded, blurred banner backdrop — vignetted on both edges so logos/text
+          baked into cover art don't clash with the card's own text */}
       {art && (
         <div
-          className="pointer-events-none absolute inset-0 bg-cover bg-center opacity-[0.12] transition-opacity group-hover:opacity-20"
+          className="pointer-events-none absolute inset-0 scale-110 bg-cover bg-center opacity-[0.16] blur-md transition-opacity duration-300 group-hover:opacity-[0.24]"
           style={{ backgroundImage: `url(${art})` }}
         />
       )}
-      <div className="absolute inset-0 bg-gradient-to-r from-ink-850 via-ink-850/85 to-transparent" />
+      <div className="absolute inset-0 bg-gradient-to-r from-ink-850 via-ink-850/55 to-ink-850/90" />
 
       {/* thumbnail */}
       <div className="relative z-10 flex-shrink-0 p-3">
