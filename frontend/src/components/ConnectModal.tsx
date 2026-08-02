@@ -31,6 +31,8 @@ export function ConnectModal({
         </div>
         {schema.key === "ubisoft" ? (
           <UbisoftFlow schema={schema} account={account} onConnected={onConnected} />
+        ) : schema.key === "psn" ? (
+          <PSNFlow schema={schema} account={account} onConnected={onConnected} />
         ) : schema.key === "xbox" ? (
           <XboxFlow schema={schema} account={account} onConnected={onConnected} />
         ) : schema.auth_type === "oauth" ? (
@@ -211,6 +213,103 @@ function UbisoftServiceLogin({ onSignedIn }: { onSignedIn: () => void }) {
       <button
         onClick={save}
         disabled={busy || !ticket.trim()}
+        className="w-full rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-accent/90 disabled:opacity-50"
+      >
+        {busy ? "Validating…" : "Save session"}
+      </button>
+    </div>
+  );
+}
+
+function PSNFlow({
+  schema,
+  account,
+  onConnected,
+}: {
+  schema: PlatformSchema;
+  account?: Account;
+  onConnected: () => void;
+}) {
+  const [signedIn, setSignedIn] = useState<boolean | null>(null);
+  const [forceLogin, setForceLogin] = useState(false);
+
+  useEffect(() => {
+    api.psnServiceStatus().then((s) => setSignedIn(s.signed_in)).catch(() => setSignedIn(false));
+  }, []);
+
+  if (signedIn === null) {
+    return <div className="py-6 text-center text-muted">Checking…</div>;
+  }
+
+  if (signedIn && !forceLogin) {
+    return (
+      <div className="space-y-3">
+        <FormFlow schema={schema} account={account} onConnected={onConnected} />
+        <button
+          onClick={() => setForceLogin(true)}
+          className="text-xs text-muted underline hover:text-slate-300"
+        >
+          Re-sign in the backend PlayStation account
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <PSNServiceLogin
+      onSignedIn={() => {
+        setSignedIn(true);
+        setForceLogin(false);
+      }}
+    />
+  );
+}
+
+function PSNServiceLogin({ onSignedIn }: { onSignedIn: () => void }) {
+  const [npsso, setNpsso] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function save() {
+    setError(null);
+    setBusy(true);
+    try {
+      await api.psnServiceTicket(npsso.trim());
+      onSignedIn();
+    } catch (e) {
+      setError(String(e instanceof Error ? e.message : e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="space-y-3">
+      <p className="rounded-lg bg-ink-900 px-3 py-2 text-xs text-muted">
+        PlayStation needs one login token so the app can read public trophy profiles by
+        Online ID. This is stored once and refreshed automatically.
+      </p>
+      <ol className="list-decimal space-y-1 pl-5 text-xs text-muted">
+        <li>Log in at <span className="text-slate-300">playstation.com</span></li>
+        <li>
+          Visit{" "}
+          <span className="text-slate-300">ca.account.sony.com/api/v1/ssocookie</span> in
+          the same browser
+        </li>
+        <li>Copy the value of <span className="text-slate-300">"npsso"</span> from the JSON</li>
+      </ol>
+      <div>
+        <label className="mb-1 block text-sm font-medium text-slate-300">npsso Token</label>
+        <input
+          value={npsso}
+          onChange={(e) => setNpsso(e.target.value)}
+          className="w-full rounded-lg border border-line bg-ink-900 px-3 py-2 text-xs text-slate-100 outline-none focus:border-accent-soft"
+        />
+      </div>
+      {error && <p className="rounded-lg bg-red-950/50 px-3 py-2 text-sm text-red-300">{error}</p>}
+      <button
+        onClick={save}
+        disabled={busy || !npsso.trim()}
         className="w-full rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-accent/90 disabled:opacity-50"
       >
         {busy ? "Validating…" : "Save session"}

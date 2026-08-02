@@ -76,4 +76,9 @@ export const api = {
   ubisoftServiceStatus: () => get<{ signed_in: boolean }>("/api/ubisoft-service-status"),
   ubisoftServiceTicket: (ticket: string) =>
     send<{ status: string }>("/api/ubisoft-service-ticket", "POST", { ticket }),
+
+  // PlayStation backend service credential (used to look up public trophies by Online ID)
+  psnServiceStatus: () => get<{ signed_in: boolean }>("/api/psn-service-status"),
+  psnServiceTicket: (npsso: string) =>
+    send<{ status: string }>("/api/psn-service-ticket", "POST", { npsso }),
 };

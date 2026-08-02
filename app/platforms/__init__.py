@@ -5,6 +5,7 @@ from app.platforms.wargaming import WargamingPlatform
 from app.platforms.guildwars2 import GuildWars2Platform
 from app.platforms.ubisoft import UbisoftPlatform
 from app.platforms.epic import EpicPlatform
+from app.platforms.psn import PSNPlatform
 
 PLATFORMS = {
     "steam": SteamPlatform,
@@ -14,4 +15,5 @@ PLATFORMS = {
     "guildwars2": GuildWars2Platform,
     "ubisoft": UbisoftPlatform,
     "epic": EpicPlatform,
+    "psn": PSNPlatform,
 }

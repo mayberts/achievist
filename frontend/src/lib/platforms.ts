@@ -36,6 +36,10 @@ export const PLATFORM_META: Record<string, PlatformMeta> = {
     badge: "bg-[#121212] text-[#e6e6e6] border-[#3a3a3a]",
     storeUrl: (g) => (g.store_id ? `https://store.epicgames.com/p/${g.store_id}` : "https://store.epicgames.com/"),
   },
+  psn: {
+    label: "PlayStation",
+    badge: "bg-[#00184a] text-[#66c0f4] border-[#003791]",
+  },
 };
 
 export function platformLabel(platform: string): string {

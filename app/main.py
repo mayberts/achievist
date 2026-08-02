@@ -1352,6 +1352,30 @@ async def ubisoft_setup_verify(payload: dict):
     return result
 
 
+@app.get("/api/psn-service-status")
+async def psn_service_status():
+    """Whether the backend PlayStation session is present and still valid."""
+    from app.psn_auth import service_ticket_valid
+    return {"signed_in": await service_ticket_valid()}
+
+
+@app.post("/api/psn-service-ticket")
+async def psn_service_ticket(payload: dict):
+    """
+    Store the backend PlayStation credential from an npsso token.
+    Body: {"npsso": "<64-char token from ca.account.sony.com/api/v1/ssocookie>"}
+    """
+    from app.psn_auth import exchange_npsso
+    npsso = (payload.get("npsso") or "").strip()
+    if not npsso:
+        raise HTTPException(status_code=400, detail="npsso is required")
+    try:
+        await exchange_npsso(npsso)
+    except RuntimeError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"status": "ok", "message": "PlayStation session saved. You can now add accounts by Online ID."}
+
+
 @app.get("/api/ubisoft-service-status")
 async def ubisoft_service_status():
     """Whether the backend Ubisoft service ticket is present and still valid."""
