@@ -20,35 +20,29 @@ export function GameCard({ game, onClick }: { game: Game; onClick?: () => void }
   return (
     <button
       onClick={onClick}
-      className="group relative flex w-full overflow-hidden rounded-card border border-line bg-ink-850 text-left transition hover:border-ink-600 hover:bg-ink-800"
+      className="group relative flex h-32 w-full overflow-hidden rounded-card border border-line bg-ink-850 text-left transition hover:border-ink-600"
     >
-      {/* faded, blurred banner backdrop — vignetted on both edges so logos/text
-          baked into cover art don't clash with the card's own text */}
-      {art && (
-        <div
-          className="pointer-events-none absolute inset-0 scale-110 bg-cover bg-center opacity-[0.16] blur-md transition-opacity duration-300 group-hover:opacity-[0.24]"
-          style={{ backgroundImage: `url(${art})` }}
+      {/* full-bleed cover art, sharp — a left-side gradient (in the app's own
+          ink colors) carries the text instead of blurring/dimming the art */}
+      {art ? (
+        <img
+          src={art}
+          alt=""
+          className="pointer-events-none absolute inset-0 h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
+          loading="lazy"
         />
-      )}
-      <div className="absolute inset-0 bg-gradient-to-r from-ink-850 via-ink-850/55 to-ink-850/90" />
-
-      {/* thumbnail */}
-      <div className="relative z-10 flex-shrink-0 p-3">
-        <div className="h-16 w-28 overflow-hidden rounded-md bg-ink-900 ring-1 ring-black/40">
-          {art ? (
-            <img src={art} alt="" className="h-full w-full object-cover" loading="lazy" />
-          ) : (
-            <div className="flex h-full w-full items-center justify-center text-faint">
-              <Trophy size={18} />
-            </div>
-          )}
+      ) : (
+        <div className="absolute inset-0 flex items-center justify-center text-faint">
+          <Trophy size={22} />
         </div>
-      </div>
+      )}
+      <div className="absolute inset-0 bg-gradient-to-r from-ink-850 from-10% via-ink-850/85 via-45% to-transparent to-[90%]" />
+      <div className="absolute inset-0 bg-gradient-to-t from-ink-850/40 to-transparent" />
 
       {/* content */}
-      <div className="relative z-10 min-w-0 flex-1 py-3 pr-3">
+      <div className="relative z-10 flex min-w-0 flex-1 flex-col justify-center gap-1.5 px-4 py-3">
         <div className="flex items-start justify-between gap-2">
-          <h3 className="truncate text-[15px] font-semibold text-slate-100">{game.name}</h3>
+          <h3 className="truncate text-[15px] font-semibold text-slate-100 drop-shadow-sm">{game.name}</h3>
           {tag && (
             <span className={`flex-shrink-0 rounded-md px-2 py-0.5 text-[10px] font-semibold ${tag.cls}`}>
               {tag.label}
@@ -56,7 +50,7 @@ export function GameCard({ game, onClick }: { game: Game; onClick?: () => void }
           )}
         </div>
 
-        <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-[12px] text-muted">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[12px] text-muted">
           <span className="inline-flex items-center gap-1">
             <Trophy size={12} className="text-faint" />
             {game.earned_achievements} / {game.total_achievements}
@@ -76,8 +70,8 @@ export function GameCard({ game, onClick }: { game: Game; onClick?: () => void }
         </div>
 
         {/* progress */}
-        <div className="mt-2.5 flex items-center gap-2">
-          <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-ink-700">
+        <div className="flex items-center gap-2">
+          <div className="h-1.5 max-w-56 flex-1 overflow-hidden rounded-full bg-ink-900/80">
             <div
               className={`h-full rounded-full ${pct >= 100 ? "bg-accent" : "bg-accent-soft"}`}
               style={{ width: `${pct}%` }}
@@ -86,7 +80,7 @@ export function GameCard({ game, onClick }: { game: Game; onClick?: () => void }
           <span className="w-9 text-right text-[11px] font-medium tabular-nums text-muted">{pct}%</span>
         </div>
 
-        <div className="mt-2.5">
+        <div>
           <PlatformBadge platform={game.platform} />
         </div>
       </div>
