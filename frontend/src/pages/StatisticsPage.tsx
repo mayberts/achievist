@@ -14,6 +14,7 @@ import {
 import { Trophy, Lock, Gamepad2, Crown, CheckCircle2, Percent, Flame, CalendarDays } from "lucide-react";
 import { platformLabel } from "../lib/platforms";
 import { fmtDate } from "../lib/format";
+import { RARITY_TIER_HEX } from "../lib/rarity";
 
 interface Stats {
   general: Record<string, number | string | null>;
@@ -22,14 +23,6 @@ interface Stats {
   platforms: { platform: string; earned: number }[];
   progression: { month: string; total: number }[];
 }
-
-const RARITY_COLORS: Record<string, string> = {
-  Legendary: "#fbbf24",
-  Epic: "#e879f9",
-  Rare: "#38bdf8",
-  Uncommon: "#34d399",
-  Common: "#94a3b8",
-};
 
 const CHART_TOOLTIP = { background: "#121826", border: "1px solid #232c42", borderRadius: 8 } as const;
 
@@ -70,7 +63,7 @@ export function StatisticsPage() {
   const platforms = stats.platforms
     .map((p) => ({ name: platformLabel(p.platform), earned: p.earned }))
     .sort((a, b) => b.earned - a.earned);
-  const rarity = stats.rarity.map((r) => ({ ...r, color: RARITY_COLORS[r.tier] ?? "#94a3b8" }));
+  const rarity = stats.rarity.map((r) => ({ ...r, color: RARITY_TIER_HEX[r.tier] ?? "#94a3b8" }));
   const totalRarity = rarity.reduce((a, r) => a + r.cnt, 0);
 
   return (

@@ -1,10 +1,11 @@
-import { useEffect, useState, useCallback, lazy, Suspense } from "react";
+import { useEffect, useState, useCallback, useRef, lazy, Suspense } from "react";
 import { RefreshCw } from "lucide-react";
 import { api } from "./api";
 import type { Summary, SyncProgress } from "./types";
 import { Nav, type Tab } from "./components/Nav";
 import { SummaryBar } from "./components/SummaryBar";
 import { BackToTop } from "./components/BackToTop";
+import { useToast } from "./components/Toast";
 import { GamesPage } from "./pages/GamesPage";
 import { ActivityPage } from "./pages/ActivityPage";
 import { AccountsPage } from "./pages/AccountsPage";
@@ -18,14 +19,24 @@ export default function App() {
   const [tab, setTab] = useState<Tab>("games");
   const [summary, setSummary] = useState<Summary | null>(null);
   const [progress, setProgress] = useState<SyncProgress | null>(null);
+  const [accountErrors, setAccountErrors] = useState(0);
+  const toast = useToast();
+  const wasRunning = useRef(false);
 
   const loadSummary = useCallback(() => {
     api.summary().then(setSummary).catch(() => setSummary(null));
   }, []);
 
+  const loadAccountErrors = useCallback(() => {
+    api.accounts()
+      .then((a) => setAccountErrors(a.filter((x) => x.status === "error").length))
+      .catch(() => {});
+  }, []);
+
   useEffect(() => {
     loadSummary();
-  }, [loadSummary]);
+    loadAccountErrors();
+  }, [loadSummary, loadAccountErrors]);
 
   // poll sync progress while a sync is running
   useEffect(() => {
@@ -35,9 +46,20 @@ export default function App() {
         const p = await api.syncProgress();
         setProgress(p);
         if (p.running) {
+          wasRunning.current = true;
           timer = window.setTimeout(tick, 2000);
         } else {
+          if (wasRunning.current) {
+            const errors = Object.entries(p.platforms).filter(([, s]) => s.status === "error");
+            if (errors.length > 0) {
+              toast.error(`Sync finished with ${errors.length} error${errors.length > 1 ? "s" : ""}: ${errors.map(([plat]) => plat).join(", ")}`);
+            } else if (Object.keys(p.platforms).length > 0) {
+              toast.success("Sync complete");
+            }
+          }
+          wasRunning.current = false;
           loadSummary();
+          loadAccountErrors();
         }
       } catch {
         /* ignore */
@@ -45,14 +67,20 @@ export default function App() {
     };
     tick();
     return () => window.clearTimeout(timer);
-  }, [loadSummary]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loadSummary, loadAccountErrors]);
 
   const running = progress?.running ?? false;
 
   async function syncAll() {
-    await api.syncAll().catch(() => {});
+    try {
+      await api.syncAll();
+      toast.info("Sync started");
+    } catch (e) {
+      toast.error(String(e instanceof Error ? e.message : e));
+      return;
+    }
     setProgress((p) => (p ? { ...p, running: true } : p));
-    // kick the poller
     const p = await api.syncProgress().catch(() => null);
     if (p) setProgress(p);
   }
@@ -63,7 +91,14 @@ export default function App() {
         {summary && <SummaryBar summary={summary} />}
 
         <div className="mt-5 flex items-center justify-between gap-4">
-          <Nav tab={tab} onChange={setTab} />
+          <Nav
+            tab={tab}
+            onChange={(t) => {
+              setTab(t);
+              if (t === "accounts") loadAccountErrors();
+            }}
+            accountErrors={accountErrors}
+          />
           <button
             onClick={syncAll}
             disabled={running}
