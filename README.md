@@ -1,84 +1,133 @@
 # Pantheon
 
-A self-hosted, single-user cross-platform achievement aggregator. Track achievements across Steam, Xbox, and RetroAchievements in one dashboard — your own Exophase, running on your own box.
+A self-hosted, single-user cross-platform achievement aggregator. Track achievements, trophies, and playtime across Steam, Xbox, PlayStation, Epic Games, RetroAchievements, Ubisoft Connect, Guild Wars 2, and Wargaming titles — one dashboard, running on your own box.
 
 ## Stack
 
-FastAPI + APScheduler in one container, Postgres for storage, a vanilla-JS dashboard. No login, no leaderboards, no multi-tenancy: it is yours alone.
+FastAPI + APScheduler backend in one container, Postgres for storage, a React + Tailwind SPA frontend. No login, no leaderboards, no multi-tenancy: it's yours alone.
 
 ## Quick start
 
 ```bash
-cp .env.example .env
-# Fill in credentials for the platforms you want (see below)
 docker compose up -d --build
 ```
 
-Open `http://<host>:8744`. On first run it seeds your accounts from `.env`, applies the schema, and kicks off an initial sync automatically. After that it refreshes every `SYNC_INTERVAL_HOURS`, and the dashboard has a manual **Sync now** button.
+Open `http://<host>:8744`. Everything else — connecting platforms, credentials, sync — happens in the **Accounts** tab of the app itself. There's no `.env` setup required to get the app running; `.env` is only for a handful of optional app-level settings (see below).
 
-## Supported platforms
+## Connecting platforms
 
-| Platform | Achievements | Playtime | Notes |
-|---|---|---|---|
-| **Steam** | ✅ | ✅ | Full unlock dates, rarity |
-| **Xbox** (One/Series) | ✅ | ✅ (if available) | Requires device-code auth via `/api/xbox-setup` |
-| **Xbox 360** | ✅ earned | ❌ | Locked achievements via Exophase import |
-| **RetroAchievements** | ✅ | ❌ | |
+Every platform is connected from the **Accounts** tab in the UI, not `.env`. Click **Connect** on a platform card and follow its prompt:
 
-## Getting credentials
+| Platform | What you need | Notes |
+|---|---|---|
+| **Steam** | SteamID64 + API key | Profile & game details must be public |
+| **Xbox** | "Sign in with Xbox" (device code) or a public gamertag | Needs `XBOX_CLIENT_ID` set — see below |
+| **PlayStation** | A one-time `npsso` token, then any public Online ID | Trophy privacy must be "Anyone" |
+| **Epic Games** | Your Epic account ID (from your profile URL) | Profile must be public |
+| **RetroAchievements** | Username + API key | |
+| **Ubisoft Connect** | A one-time browser session ticket, then any public username | Only legacy "Uplay units" achievements are available — see [Platform notes](#platform-notes) |
+| **Guild Wars 2** | An API key (progression scope) | |
+| **Wargaming** (WoT/WoWS) | Application ID + nickname/region | |
 
-### Steam
-- **API key**: https://steamcommunity.com/dev/apikey
-- **SteamID (64-bit)**: https://steamid.io — paste your profile URL, copy `steamID64`
-- Your Steam profile and game details must be **public**
+Once connected, an account syncs automatically on the schedule (`SYNC_INTERVAL_HOURS`, default 12h) or on demand via **Sync all** / the per-account **Sync** button.
 
-### Xbox
-1. Set `XBOX_CLIENT_ID` in `.env` (register an app at https://portal.azure.com)
-2. Start the app, then open `http://<host>:8744/api/xbox-setup` in your browser
-3. Follow the device-code flow — `XBOX_REFRESH_TOKEN` is saved automatically
+### Xbox setup
 
-### RetroAchievements
-- Settings → Keys on retroachievements.org
-- `RA_TARGET_USER` defaults to `RA_USERNAME` if left blank
+Xbox sign-in needs a free, one-time Azure app registration — Microsoft doesn't allow the device-code flow for a shared/borrowed client ID:
 
-### IGDB (optional — portrait cover art fallback)
-- Create a Twitch app at https://dev.twitch.tv/console/apps (category: Game Integration)
-- Add `IGDB_CLIENT_ID` and `IGDB_CLIENT_SECRET` to `.env`
+1. [portal.azure.com](https://portal.azure.com) → **App registrations** → **New registration**
+   - Supported account types: *Personal Microsoft accounts only*
+   - No redirect URI needed
+2. **Authentication** → **Allow public client flows** → **Yes** → Save
+3. Copy the **Application (client) ID** into `.env` as `XBOX_CLIENT_ID`
+4. `docker compose up -d --build`, then Accounts → Xbox → **Sign in with Xbox**
 
-### SteamGridDB (optional — landscape cover art, recommended)
-- Get your API key at https://www.steamgriddb.com/profile/preferences/api
-- Add `SGDB_API_KEY` to `.env`
-- After deploying, trigger a backfill: `POST /api/sgdb-refresh`
-- Use the **Change Cover** button on any game detail page to manually pick or fix a cover
+After that, you can also add other public gamertags as separate accounts.
 
-### Exophase (optional — Xbox 360 locked achievements)
-- Used to import locked achievement lists for Xbox 360 games that the Microsoft API won't return
-- Extract credentials from your browser session on exophase.com (see browser console snippet)
+### PlayStation setup
+
+1. Log into [playstation.com](https://playstation.com) in a browser
+2. Visit `https://ca.account.sony.com/api/v1/ssocookie` in the same browser — copy the `npsso` value from the JSON
+3. Accounts → PlayStation → Connect → paste it (one-time backend session)
+4. Add accounts by **PSN Online ID** (trophy privacy must be public)
+
+### Ubisoft Connect setup
+
+1. Log into [connect.ubisoft.com](https://connect.ubisoft.com), open DevTools → Network, and grab a `Ubi_v1 t=…` session ticket from any `public-ubiservices.ubi.com` request
+2. Accounts → Ubisoft → Connect → paste it (expires after a few hours — you'll re-paste occasionally)
+3. Add accounts by **username** (public profile required)
+
+## Platform notes
+
+- **Ubisoft achievements are limited to legacy "Uplay units"**, not the modern achievement set Ubisoft's own apps show. Ubisoft's modern achievement API is locked to a private client ID only their desktop app holds, and their local caches are encrypted — there is no public path to full parity. Games and legacy unit progress still sync correctly.
+- **GOG is not supported.** GOG's achievement API requires a separate developer-issued secret *per game*, extracted individually from each game's files — there's no universal token, so it isn't a one-time integration.
+- **Epic Games** achievement data is fully public (no auth beyond your account ID) via Epic's Store GraphQL API.
+
+## Optional app-level settings (`.env`)
+
+Copy `.env.example` to `.env` for these — none are required to start the app:
+
+| Variable | Purpose |
+|---|---|
+| `XBOX_CLIENT_ID` | Required for Xbox sign-in (see above) |
+| `SYNC_INTERVAL_HOURS`, `REQUEST_DELAY_SECONDS` | Sync scheduling / per-request throttling |
+| `IGDB_CLIENT_ID` / `IGDB_CLIENT_SECRET` | Portrait cover art fallback (Twitch dev app) |
+| `SGDB_API_KEY` | SteamGridDB landscape cover art (preferred over IGDB) |
+| `EXOPHASE_*` | Xbox 360 locked-achievement import from exophase.com |
 
 ## Cover art priority
 
 For non-Steam games, covers are resolved in this order:
 1. **SteamGridDB** landscape grid (460×215 or 920×430)
 2. **IGDB** portrait cover (cropped to landscape)
-3. **Platform icon** (Xbox tile image)
+3. **Platform icon**
 
-The **Change Cover** button on each game's detail page lets you search SGDB by name or game ID and save a specific image.
+Use the **Change Cover** action on a game's detail page to search SGDB manually and pin a specific image.
 
-## API
+## API reference
+
+The frontend is a full SPA; these are the main endpoints it talks to (see `app/main.py` for the complete set):
 
 | Method | Path | Purpose |
 |---|---|---|
-| GET | `/api/summary` | Overall + per-platform stats including playtime |
-| GET | `/api/games` | Library (`?sort=completion\|recent\|playtime\|name&platform=xbox\|steam\|retroachievements&completion=completed\|in_progress\|not_started`) |
+| GET | `/api/summary` | Overall + per-platform stats |
+| GET | `/api/games` | Library, paginated (`sort`, `platform`, `completion`, `search`) |
 | GET | `/api/games/{id}` | Game detail with achievements and rarity |
-| POST | `/api/sync` | Trigger a full sync (202, or 409 if busy) |
-| GET | `/api/status` | Linked accounts + last 10 sync runs |
-| GET | `/api/xbox-setup` | Start Xbox device-code auth flow |
-| POST | `/api/igdb-refresh` | Re-run IGDB enrichment (`?platform=xbox` to reset failed Xbox lookups) |
-| POST | `/api/sgdb-refresh` | Re-run SteamGridDB cover enrichment |
-| GET | `/api/sgdb-search` | Search SGDB by name or game ID (`?q=`) |
-| POST | `/api/sgdb-set` | Save a specific SGDB cover URL to a game |
-| POST | `/api/exophase-import-icons` | Import locked achievements from Exophase JSON |
+| GET | `/api/activity` | Unlock heatmap, streaks, recent-activity feed |
+| GET | `/api/statistics` | Rarity/completion breakdowns, records, progression |
+| GET | `/api/platforms` | Connect-schema for every supported platform |
+| GET / POST / DELETE | `/api/accounts` | List / connect / disconnect accounts |
+| POST | `/api/accounts/{id}/sync` | Sync a single account |
+| POST | `/api/sync` | Sync all accounts (202, or 409 if busy) |
+| GET | `/api/sync/progress` | Live sync status |
+
+## Development
+
+### Backend tests
+
+```bash
+pip install -r requirements-dev.txt
+pytest
+```
+
+Tests cover pure parsing/auth helpers and the platform-registry contract (every platform's connect schema is well-formed) — they don't require a running Postgres.
+
+### Frontend
+
+```bash
+cd frontend
+npm install
+npm run dev      # dev server with API proxy to :8000
+npm run build    # production build → app/webdist (what Docker serves)
+```
+
+### Full stack locally
+
+```bash
+docker compose up -d --build
+```
+
+CI (`.github/workflows/test.yml`) runs the backend test suite and a frontend production build on every push and PR.
 
 ## Version control and updates
 
@@ -93,7 +142,7 @@ git remote add origin git@github.com:<you>/pantheon.git
 git push -u origin main
 ```
 
-`.env` and `pgdata/` are gitignored — secrets and the database are never committed.
+`.env` and `pgdata/` are gitignored — secrets and the database are never committed. Platform credentials live in the database, not in git, either way.
 
 ### Tier 1: pull and rebuild on the box
 
@@ -104,17 +153,10 @@ chmod +x update.sh   # once
 
 ### Tier 2: build in CI, pull the image
 
-`.github/workflows/build.yml` builds on every push to `main` and pushes to GHCR. On the host:
+`.github/workflows/build.yml` builds on every push to `main` and pushes to GHCR.
 
 1. Push to `main` — GitHub Actions publishes `ghcr.io/<you>/pantheon:latest`
 2. Deploy with `docker-compose.ghcr.yml` (set `<youruser>` first, `docker login ghcr.io` once if private)
 3. Update: `docker compose -f docker-compose.ghcr.yml pull && docker compose -f docker-compose.ghcr.yml up -d`
-
-## Local development
-
-1. Clone and open in VS Code
-2. `cp .env.example .env` and fill in your keys
-3. `docker compose up -d --build` → open `http://localhost:8744`
-4. Commit and push; deploy with `./update.sh` on the server
 
 `.gitattributes` pins shell and code files to LF so Windows checkouts don't break Linux scripts.

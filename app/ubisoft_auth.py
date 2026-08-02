@@ -11,7 +11,7 @@ Setup (one-time):
 import json
 import logging
 import os
-from base64 import b64encode, urlsafe_b64decode
+from base64 import urlsafe_b64decode
 from pathlib import Path
 
 import httpx
@@ -66,76 +66,6 @@ def session_headers(ticket: str) -> dict:
     if sid:
         headers["Ubi-SessionId"] = sid
     return headers
-
-
-async def start_auth(email: str, password: str) -> dict:
-    """
-    Initiate authentication with email + password.
-    Returns either:
-      {"status": "done", "profile_id": ..., "user_id": ..., "ticket": ...}
-      {"status": "2fa_required", "two_factor_ticket": ..., "method": "TOTP"|"EMAIL"}
-    """
-    creds = b64encode(f"{email}:{password}".encode()).decode()
-    headers = {**_base_headers(), "Authorization": f"Basic {creds}"}
-    async with httpx.AsyncClient(timeout=20) as client:
-        resp = await client.post(
-            f"{_BASE}/v3/profiles/sessions",
-            json={"rememberMe": True},
-            headers=headers,
-        )
-
-    if resp.status_code == 200:
-        data = resp.json()
-        _save_session(data.get("ticket", ""), data.get("rememberMeTicket", ""))
-        return {
-            "status": "done",
-            "profile_id": data.get("profileId"),
-            "user_id": data.get("userId"),
-        }
-
-    if resp.status_code == 409:
-        data = resp.json()
-        two_fa_ticket = data.get("twoFactorAuthenticationTicket")
-        if two_fa_ticket:
-            # Determine 2FA method — prefer TOTP if available
-            inline_code = data.get("inlineAuthenticationMethods") or []
-            method = "TOTP" if any(m.get("type") == "Totp" for m in inline_code) else "EMAIL"
-            return {
-                "status": "2fa_required",
-                "two_factor_ticket": two_fa_ticket,
-                "method": method,
-            }
-
-    raise RuntimeError(f"Ubisoft auth failed: HTTP {resp.status_code} — {resp.text[:300]}")
-
-
-async def complete_2fa(two_factor_ticket: str, code: str) -> dict:
-    """
-    Complete 2FA with the given code.
-    Returns {"status": "done", "profile_id": ..., "user_id": ...}
-    """
-    headers = {
-        **_base_headers(),
-        "Authorization": f"ubi_2fa_v1 t={two_factor_ticket}",
-        "Ubi-2FaCode": code,
-    }
-    async with httpx.AsyncClient(timeout=20) as client:
-        resp = await client.post(
-            f"{_BASE}/v3/profiles/sessions",
-            json={"rememberMe": True},
-            headers=headers,
-        )
-
-    if resp.status_code != 200:
-        raise RuntimeError(f"Ubisoft 2FA failed: HTTP {resp.status_code} — {resp.text[:300]}")
-
-    data = resp.json()
-    _save_session(data.get("ticket", ""), data.get("rememberMeTicket", ""))
-    return {
-        "status": "done",
-        "profile_id": data.get("profileId"),
-        "user_id": data.get("userId"),
-    }
 
 
 async def refresh_session(stored: str | None = None) -> tuple[str, str]:

@@ -32,12 +32,6 @@ WARGAMING_REGION = os.getenv("WARGAMING_REGION", "eu")
 
 GW2_API_KEY = os.getenv("GW2_API_KEY", "")
 
-# Backend Ubisoft "service account" — one login the app uses to look up public
-# profiles by username (like Trophies Hunter). Optional; can also be set up via
-# the /api/ubisoft-setup endpoints. The rememberMeTicket is stored under /data.
-UBISOFT_SERVICE_EMAIL = os.getenv("UBISOFT_SERVICE_EMAIL", "")
-UBISOFT_SERVICE_PASSWORD = os.getenv("UBISOFT_SERVICE_PASSWORD", "")
-
 EXOPHASE_PLAYER_ID = os.getenv("EXOPHASE_PLAYER_ID", "")
 EXOPHASE_REMEMBERME = os.getenv("EXOPHASE_REMEMBERME", "")
 EXOPHASE_XF_USER = os.getenv("EXOPHASE_XF_USER", "")
