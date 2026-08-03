@@ -37,14 +37,14 @@ export function ProfileEditModal({
 
   return (
     <div
-      className="fixed inset-0 z-[60] flex items-start justify-center overflow-y-auto bg-black/70 p-4"
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 p-4"
       onClick={(e) => {
         e.stopPropagation();
         onClose();
       }}
     >
       <div
-        className="my-8 w-full max-w-sm rounded-card border border-line bg-ink-850 shadow-2xl"
+        className="flex max-h-[90vh] w-full max-w-sm flex-col overflow-y-auto rounded-card border border-line bg-ink-850 shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between border-b border-line p-4">
