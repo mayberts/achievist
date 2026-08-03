@@ -20,7 +20,7 @@ export function SummaryBar({ summary }: { summary: Summary }) {
   const platforms = [...summary.by_platform].sort((a, b) => b.earned - a.earned);
 
   return (
-    <div className="flex items-center gap-3 rounded-card border border-line bg-ink-850 p-3 sm:gap-4 sm:p-4">
+    <div className="flex items-center gap-3 rounded-card border border-line/50 bg-ink-850/45 p-3 backdrop-blur-md sm:gap-4 sm:p-4">
       <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-full bg-ink-700 text-muted sm:h-16 sm:w-16">
         <User size={24} className="sm:hidden" />
         <User size={30} className="hidden sm:block" />

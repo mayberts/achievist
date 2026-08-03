@@ -26,10 +26,10 @@ export function Nav({
           <button
             key={t.key}
             onClick={() => onChange(t.key)}
-            className={`relative inline-flex flex-shrink-0 items-center gap-2 rounded-lg px-3.5 py-2 text-sm font-medium transition ${
+            className={`relative inline-flex flex-shrink-0 items-center gap-2 rounded-lg border px-3.5 py-2 text-sm font-medium backdrop-blur-sm transition ${
               tab === t.key
-                ? "bg-ink-800 text-slate-100"
-                : "text-muted hover:bg-ink-850 hover:text-slate-200"
+                ? "border-accent/40 bg-accent/20 text-accent"
+                : "border-line/40 bg-ink-900/40 text-muted hover:bg-ink-800/60 hover:text-slate-200"
             }`}
           >
             {t.icon}
