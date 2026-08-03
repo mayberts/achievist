@@ -1,12 +1,13 @@
 import { useEffect, useState } from "react";
-import { X, Trophy, Clock, Calendar, ExternalLink, Lock, ImageUp } from "lucide-react";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
+import { ArrowLeft, Trophy, Clock, Calendar, ExternalLink, Lock, ImageUp } from "lucide-react";
 import { api } from "../api";
 import type { Achievement, GameDetail } from "../types";
 import { fmtPlaytime, fmtDate, fmtNum } from "../lib/format";
-import { PlatformBadge } from "./PlatformBadge";
+import { PlatformBadge } from "../components/PlatformBadge";
 import { PLATFORM_META } from "../lib/platforms";
 import { RARITY_TIER_CLASS, rarityTier } from "../lib/rarity";
-import { ChangeCoverModal } from "./ChangeCoverModal";
+import { ChangeCoverModal } from "../components/ChangeCoverModal";
 
 function banner(g: GameDetail): string | null {
   return g.sgdb_cover_url || g.igdb_cover_url || g.icon_url || null;
@@ -17,23 +18,46 @@ function hltb(h: number | null): string | null {
   return `${h}h`;
 }
 
-export function GameDetailModal({ gameId, onClose }: { gameId: number; onClose: () => void }) {
+export function GameDetailPage() {
+  const { id } = useParams();
+  const gameId = Number(id);
+  const navigate = useNavigate();
+  const location = useLocation();
   const [game, setGame] = useState<GameDetail | null>(null);
   const [achs, setAchs] = useState<Achievement[] | null>(null);
   const [changingCover, setChangingCover] = useState(false);
+  const [notFound, setNotFound] = useState(false);
 
   useEffect(() => {
     setGame(null);
     setAchs(null);
-    api.gameDetail(gameId).then(setGame).catch(() => setGame(null));
+    setNotFound(false);
+    api.gameDetail(gameId).then(setGame).catch(() => setNotFound(true));
     api.gameAchievements(gameId).then(setAchs).catch(() => setAchs([]));
   }, [gameId]);
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && !changingCover && onClose();
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose, changingCover]);
+  function goBack() {
+    // Prefer real browser back (preserves scroll position / filters on the
+    // page that linked here); fall back to the library if we were opened
+    // directly (e.g. a bookmark or shared link — react-router gives the
+    // initial entry a "default" key, meaning there's no in-app history).
+    if (location.key !== "default") navigate(-1);
+    else navigate("/");
+  }
+
+  if (notFound) {
+    return (
+      <div className="py-16 text-center">
+        <div className="text-muted">Game not found.</div>
+        <button
+          onClick={goBack}
+          className="mt-3 inline-flex items-center gap-1.5 text-sm text-accent hover:underline"
+        >
+          <ArrowLeft size={14} /> Back
+        </button>
+      </div>
+    );
+  }
 
   const art = game ? banner(game) : null;
   const pct = Math.round(game?.completion_pct ?? 0);
@@ -51,11 +75,15 @@ export function GameDetailModal({ gameId, onClose }: { gameId: number; onClose: 
     : [];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/70 p-4" onClick={onClose}>
-      <div
-        className="my-8 w-full max-w-2xl overflow-hidden rounded-card border border-line bg-ink-850 shadow-2xl"
-        onClick={(e) => e.stopPropagation()}
+    <div>
+      <button
+        onClick={goBack}
+        className="mb-4 inline-flex items-center gap-1.5 text-sm text-muted transition hover:text-slate-200"
       >
+        <ArrowLeft size={15} /> Back
+      </button>
+
+      <div className="overflow-hidden rounded-card border border-line bg-ink-850 shadow-2xl">
         {/* header banner */}
         <div className="relative">
           {art && (
@@ -65,12 +93,6 @@ export function GameDetailModal({ gameId, onClose }: { gameId: number; onClose: 
             />
           )}
           <div className="absolute inset-0 bg-gradient-to-t from-ink-850 to-ink-850/40" />
-          <button
-            onClick={onClose}
-            className="absolute right-3 top-3 z-10 rounded-lg bg-black/40 p-1.5 text-slate-200 hover:bg-black/60"
-          >
-            <X size={18} />
-          </button>
           <div className="relative flex flex-col gap-4 p-4 sm:flex-row sm:p-5">
             {art && (
               <img
@@ -150,7 +172,7 @@ export function GameDetailModal({ gameId, onClose }: { gameId: number; onClose: 
         </div>
 
         {/* achievements */}
-        <div className="max-h-[50vh] overflow-y-auto p-3">
+        <div className="p-3">
           {achs === null ? (
             <div className="py-10 text-center text-muted">Loading achievements…</div>
           ) : achs.length === 0 ? (

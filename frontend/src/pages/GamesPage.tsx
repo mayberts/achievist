@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
 import { Search, List, LayoutGrid, Gamepad2 } from "lucide-react";
 import { api } from "../api";
 import type { Game, Summary } from "../types";
 import { GameCard } from "../components/GameCard";
 import { GameRow } from "../components/GameRow";
 import { GameCardSkeleton, GameRowSkeleton } from "../components/Skeleton";
-import { GameDetailModal } from "../components/GameDetailModal";
 import { platformLabel } from "../lib/platforms";
 
 type ViewMode = "grid" | "list";
@@ -33,8 +33,8 @@ export function GamesPage({ summary }: { summary: Summary | null }) {
   const [loading, setLoading] = useState(false);
   const [initialLoading, setInitialLoading] = useState(true);
   const [hasAnyAccount, setHasAnyAccount] = useState<boolean | null>(null);
+  const navigate = useNavigate();
 
-  const [selected, setSelected] = useState<number | null>(null);
   const [view, setView] = useState<ViewMode>(
     () => (localStorage.getItem("pantheon.view") as ViewMode) || "grid",
   );
@@ -201,13 +201,13 @@ export function GamesPage({ summary }: { summary: Summary | null }) {
       ) : view === "grid" ? (
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
           {games.map((g) => (
-            <GameCard key={g.platform_game_id} game={g} onClick={() => setSelected(g.platform_game_id)} />
+            <GameCard key={g.platform_game_id} game={g} onClick={() => navigate(`/games/${g.platform_game_id}`)} />
           ))}
         </div>
       ) : (
         <div className="flex flex-col gap-1.5">
           {games.map((g) => (
-            <GameRow key={g.platform_game_id} game={g} onClick={() => setSelected(g.platform_game_id)} />
+            <GameRow key={g.platform_game_id} game={g} onClick={() => navigate(`/games/${g.platform_game_id}`)} />
           ))}
         </div>
       )}
@@ -230,10 +230,6 @@ export function GamesPage({ summary }: { summary: Summary | null }) {
       {hasMore && <div ref={sentinelRef} className="h-1" />}
       {loading && !initialLoading && games.length > 0 && (
         <div className="mt-6 text-center text-sm text-muted">Loading…</div>
-      )}
-
-      {selected !== null && (
-        <GameDetailModal gameId={selected} onClose={() => setSelected(null)} />
       )}
     </div>
   );
