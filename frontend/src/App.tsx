@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback, useRef, lazy, Suspense } from "react";
+import { Route, Routes, useNavigate } from "react-router-dom";
 import { RefreshCw } from "lucide-react";
 import { api } from "./api";
 import type { Summary, SyncProgress } from "./types";
@@ -10,6 +11,7 @@ import { GamesPage } from "./pages/GamesPage";
 import { ActivityPage } from "./pages/ActivityPage";
 import { AccountsPage } from "./pages/AccountsPage";
 import { MaintenancePage } from "./pages/MaintenancePage";
+import { GameDetailPage } from "./pages/GameDetailPage";
 
 // Statistics pulls in recharts (~340 kB); load it only when the tab is opened.
 const StatisticsPage = lazy(() =>
@@ -23,6 +25,7 @@ export default function App() {
   const [accountErrors, setAccountErrors] = useState(0);
   const toast = useToast();
   const wasRunning = useRef(false);
+  const navigate = useNavigate();
 
   const loadSummary = useCallback(() => {
     api.summary().then(setSummary).catch(() => setSummary(null));
@@ -139,6 +142,7 @@ export default function App() {
             tab={tab}
             onChange={(t) => {
               setTab(t);
+              navigate("/");
               if (t === "accounts") loadAccountErrors();
             }}
             accountErrors={accountErrors}
@@ -165,15 +169,25 @@ export default function App() {
         )}
 
         <div className="mt-6">
-          {tab === "games" && <GamesPage summary={summary} />}
-          {tab === "activity" && <ActivityPage />}
-          {tab === "accounts" && <AccountsPage />}
-          {tab === "maintenance" && <MaintenancePage />}
-          {tab === "statistics" && (
-            <Suspense fallback={<div className="py-16 text-center text-muted">Loading…</div>}>
-              <StatisticsPage />
-            </Suspense>
-          )}
+          <Routes>
+            <Route path="/games/:id" element={<GameDetailPage />} />
+            <Route
+              path="*"
+              element={
+                <>
+                  {tab === "games" && <GamesPage summary={summary} />}
+                  {tab === "activity" && <ActivityPage />}
+                  {tab === "accounts" && <AccountsPage />}
+                  {tab === "maintenance" && <MaintenancePage />}
+                  {tab === "statistics" && (
+                    <Suspense fallback={<div className="py-16 text-center text-muted">Loading…</div>}>
+                      <StatisticsPage />
+                    </Suspense>
+                  )}
+                </>
+              }
+            />
+          </Routes>
         </div>
       </div>
       <BackToTop />

@@ -93,8 +93,8 @@ export function ChangeCoverModal({
     <div
       className="fixed inset-0 z-[60] flex items-start justify-center overflow-y-auto bg-black/70 p-4"
       onClick={(e) => {
-        // Nested inside GameDetailModal's own backdrop div — stop the click
-        // here so it doesn't also bubble up and close that modal too.
+        // Stop propagation in case a future caller nests this inside another
+        // clickable/backdrop element.
         e.stopPropagation();
         onClose();
       }}

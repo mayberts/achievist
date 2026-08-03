@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Flame, Clock, Trophy } from "lucide-react";
 import { api } from "../api";
 import type { Activity } from "../types";
 import { fmtPlaytime, fmtDate, fmtRelative } from "../lib/format";
 import { PlatformBadge } from "../components/PlatformBadge";
-import { GameDetailModal } from "../components/GameDetailModal";
 
 function Heatmap({ data }: { data: { day: string; count: number }[] }) {
   const counts = useMemo(() => new Map(data.map((d) => [d.day, d.count])), [data]);
@@ -98,7 +98,7 @@ function StatCard({ icon, value, label, sub }: { icon: React.ReactNode; value: s
 
 export function ActivityPage() {
   const [data, setData] = useState<Activity | null>(null);
-  const [selected, setSelected] = useState<number | null>(null);
+  const navigate = useNavigate();
 
   useEffect(() => {
     api.activity().then(setData).catch(() => setData(null));
@@ -132,7 +132,7 @@ export function ActivityPage() {
             {data.feed.map((f) => (
               <button
                 key={`${f.platform_game_id}-${f.day}`}
-                onClick={() => setSelected(f.platform_game_id)}
+                onClick={() => navigate(`/games/${f.platform_game_id}`)}
                 className="flex w-full items-center gap-3 rounded-card border border-line bg-ink-850 p-3 text-left transition hover:border-ink-600 hover:bg-ink-800"
               >
                 <div className="h-12 w-20 flex-shrink-0 overflow-hidden rounded bg-ink-900">
@@ -165,8 +165,6 @@ export function ActivityPage() {
           </div>
         )}
       </div>
-
-      {selected !== null && <GameDetailModal gameId={selected} onClose={() => setSelected(null)} />}
     </div>
   );
 }
