@@ -1080,28 +1080,43 @@ async def sgdb_refresh(force: bool = False):
     return {"status": "started"}
 
 
+async def _sgdb_art_for(client, headers: dict, base: str, game_id: int) -> dict:
+    """Fetch both Heroes (no logo, preferred) and Grids (may include a logo) for a game."""
+    heroes: list[str] = []
+    hr = await client.get(f"{base}/heroes/game/{game_id}", headers=headers, params={"limit": 8})
+    if hr.status_code == 200 and hr.json().get("data"):
+        heroes = [h["url"] for h in hr.json()["data"]]
+
+    grids: list[str] = []
+    for dims in ("460x215", "920x430"):
+        gr = await client.get(
+            f"{base}/grids/game/{game_id}",
+            headers=headers,
+            params={"dimensions": dims, "limit": 6},
+        )
+        if gr.status_code == 200 and gr.json().get("data"):
+            grids.extend(g["url"] for g in gr.json()["data"])
+    return {"heroes": heroes, "grids": grids}
+
+
 @app.get("/api/sgdb-search")
 async def sgdb_search(q: str):
-    """Search SteamGridDB by name or numeric game ID."""
+    """
+    Search SteamGridDB by name or numeric game ID. Returns both Heroes (wide
+    banner art with no logo baked in — the best fit for our full-bleed cards)
+    and Grids (may include the game's logo) so the user can pick either.
+    """
     if not config.SGDB_API_KEY:
         return {"error": "SGDB not configured"}
     import httpx
     headers = {"Authorization": f"Bearer {config.SGDB_API_KEY}"}
     base = "https://www.steamgriddb.com/api/v2"
     async with httpx.AsyncClient(timeout=15) as client:
-        # If query is a numeric ID, fetch grids directly
+        # If query is a numeric ID, fetch art directly
         if q.strip().isdigit():
             game_id = int(q.strip())
-            grids = []
-            for dims in ("460x215", "920x430"):
-                gr = await client.get(
-                    f"{base}/grids/game/{game_id}",
-                    headers=headers,
-                    params={"dimensions": dims, "limit": 6},
-                )
-                if gr.status_code == 200 and gr.json().get("data"):
-                    grids.extend(gr.json()["data"])
-            return {"games": [{"id": game_id, "name": f"Game ID {game_id}", "grids": [g["url"] for g in grids]}]}
+            art = await _sgdb_art_for(client, headers, base, game_id)
+            return {"games": [{"id": game_id, "name": f"Game ID {game_id}", **art}]}
 
         resp = await client.get(f"{base}/search/autocomplete/{q}", headers=headers)
         if resp.status_code != 200:
@@ -1109,17 +1124,8 @@ async def sgdb_search(q: str):
         games = resp.json().get("data") or []
         results = []
         for game in games[:5]:
-            game_id = game["id"]
-            grids = []
-            for dims in ("460x215", "920x430"):
-                gr = await client.get(
-                    f"{base}/grids/game/{game_id}",
-                    headers=headers,
-                    params={"dimensions": dims, "limit": 6},
-                )
-                if gr.status_code == 200 and gr.json().get("data"):
-                    grids.extend(gr.json()["data"])
-            results.append({"id": game_id, "name": game["name"], "grids": [g["url"] for g in grids]})
+            art = await _sgdb_art_for(client, headers, base, game["id"])
+            results.append({"id": game["id"], "name": game["name"], **art})
         return {"games": results}
 
 

@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
-import { X, Trophy, Clock, Calendar, ExternalLink, Lock } from "lucide-react";
+import { X, Trophy, Clock, Calendar, ExternalLink, Lock, ImageUp } from "lucide-react";
 import { api } from "../api";
 import type { Achievement, GameDetail } from "../types";
 import { fmtPlaytime, fmtDate, fmtNum } from "../lib/format";
 import { PlatformBadge } from "./PlatformBadge";
 import { PLATFORM_META } from "../lib/platforms";
 import { RARITY_TIER_CLASS, rarityTier } from "../lib/rarity";
+import { ChangeCoverModal } from "./ChangeCoverModal";
 
 function banner(g: GameDetail): string | null {
   return g.sgdb_cover_url || g.igdb_cover_url || g.icon_url || null;
@@ -19,6 +20,7 @@ function hltb(h: number | null): string | null {
 export function GameDetailModal({ gameId, onClose }: { gameId: number; onClose: () => void }) {
   const [game, setGame] = useState<GameDetail | null>(null);
   const [achs, setAchs] = useState<Achievement[] | null>(null);
+  const [changingCover, setChangingCover] = useState(false);
 
   useEffect(() => {
     setGame(null);
@@ -28,10 +30,10 @@ export function GameDetailModal({ gameId, onClose }: { gameId: number; onClose: 
   }, [gameId]);
 
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && !changingCover && onClose();
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  }, [onClose, changingCover]);
 
   const art = game ? banner(game) : null;
   const pct = Math.round(game?.completion_pct ?? 0);
@@ -111,6 +113,14 @@ export function GameDetailModal({ gameId, onClose }: { gameId: number; onClose: 
                   >
                     Store <ExternalLink size={11} />
                   </a>
+                )}
+                {game && (
+                  <button
+                    onClick={() => setChangingCover(true)}
+                    className="ml-auto inline-flex items-center gap-1 rounded-lg border border-line bg-ink-800/80 px-2 py-1 text-xs text-slate-200 transition hover:bg-ink-700"
+                  >
+                    <ImageUp size={12} /> Change Cover
+                  </button>
                 )}
               </div>
             </div>
@@ -194,6 +204,15 @@ export function GameDetailModal({ gameId, onClose }: { gameId: number; onClose: 
           )}
         </div>
       </div>
+
+      {changingCover && game && (
+        <ChangeCoverModal
+          gameId={game.platform_game_id}
+          initialQuery={game.name}
+          onClose={() => setChangingCover(false)}
+          onChanged={(url) => setGame((prev) => (prev ? { ...prev, sgdb_cover_url: url || null } : prev))}
+        />
+      )}
     </div>
   );
 }
