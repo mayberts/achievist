@@ -70,14 +70,25 @@ async def _enrich_igdb(retry_failed: bool = False) -> None:
     await asyncio.gather(*[_lookup(row) for row in rows])
 
 
-async def _enrich_sgdb(retry_failed: bool = False) -> None:
+async def _enrich_sgdb(retry_failed: bool = False, force: bool = False) -> None:
     """Fetch SteamGridDB landscape cover art for games that don't have it yet."""
     if not config.SGDB_API_KEY:
         return
     from app.sgdb import search_grid
     pool = await db.get_pool()
     async with pool.connection() as conn:
-        if retry_failed:
+        if force:
+            # Re-fetch everything, including games that already have a cover —
+            # used once after switching the SGDB source from Grids to Heroes,
+            # since existing covers won't otherwise be revisited.
+            await conn.execute(
+                "UPDATE platform_games SET sgdb_cover_url = NULL WHERE total_achievements > 0"
+            )
+            rows = await _fetch(
+                conn,
+                "SELECT id, name FROM platform_games WHERE total_achievements > 0",
+            )
+        elif retry_failed:
             rows = await _fetch(
                 conn,
                 "SELECT id, name FROM platform_games WHERE (sgdb_cover_url IS NULL OR sgdb_cover_url = '') AND total_achievements > 0",
@@ -1059,9 +1070,13 @@ async def igdb_refresh(platform: str | None = None):
 
 
 @app.post("/api/sgdb-refresh", status_code=202)
-async def sgdb_refresh():
-    """Re-run SteamGridDB enrichment for all games without a cover."""
-    asyncio.create_task(_enrich_sgdb(retry_failed=True))
+async def sgdb_refresh(force: bool = False):
+    """
+    Re-run SteamGridDB enrichment. By default only fills in games that don't
+    have a cover yet; pass ?force=true to re-fetch every cover from scratch
+    (e.g. after a change to which SGDB asset type is preferred).
+    """
+    asyncio.create_task(_enrich_sgdb(retry_failed=True, force=force))
     return {"status": "started"}
 
 

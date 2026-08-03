@@ -18,8 +18,7 @@ def _headers() -> dict | None:
 
 
 async def search_grid(name: str) -> str | None:
-    """Return a landscape grid URL for the best matching game, or None.
-    Tries 460x215 first, then 920x430 as fallback."""
+    """Return a wide backdrop art URL for the best matching game, or None."""
     headers = _headers()
     if not headers:
         return None
@@ -37,17 +36,37 @@ async def search_grid(name: str) -> str | None:
         if not data.get("success") or not data.get("data"):
             return None
         game_id = data["data"][0]["id"]
+        return await _best_backdrop(client, headers, game_id)
 
-        # Try 460x215 first, fall back to 920x430
+
+async def _best_backdrop(client: httpx.AsyncClient, headers: dict, game_id: int) -> str | None:
+    """
+    Prefer SteamGridDB "Heroes" — wide banner art designed to sit behind a
+    client's own overlaid text, so it doesn't come with a logo baked in.
+    "Grids" (the old source here) are built for Steam's logo-less grid view,
+    so they're usually just the box art/logo itself, which clashes with our
+    own title text drawn on top. Fall back to logo-free ("no_logo") grids,
+    then any grid, only if no hero art exists.
+    """
+    resp = await client.get(f"{_BASE}/heroes/game/{game_id}", headers=headers, params={"limit": 5})
+    if resp.status_code == 200:
+        hero_data = resp.json()
+        if hero_data.get("success") and hero_data.get("data"):
+            return hero_data["data"][0]["url"]
+
+    for styles in ("no_logo", None):
         for dimensions in ("460x215", "920x430"):
+            params = {"dimensions": dimensions, "limit": 5}
+            if styles:
+                params["styles"] = styles
             resp = await client.get(
                 f"{_BASE}/grids/game/{game_id}",
                 headers=headers,
-                params={"dimensions": dimensions, "limit": 5},
+                params=params,
             )
             if resp.status_code != 200:
                 continue
             grid_data = resp.json()
             if grid_data.get("success") and grid_data.get("data"):
                 return grid_data["data"][0]["url"]
-        return None
+    return None
