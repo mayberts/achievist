@@ -288,6 +288,30 @@ async def remove_user_game(conn, linked_account_id: int, platform: str, platform
     )
 
 
+async def unlocks_since(conn, linked_account_id: int, since) -> list[dict]:
+    """
+    Achievements for this account whose platform-reported unlock time is
+    after `since`. Used right after a sync to detect genuinely new unlocks —
+    callers should pass the account's *previous* last_synced_at (and skip the
+    call entirely if that's None, i.e. this is the account's first-ever
+    sync, to avoid treating a whole synced-in backlog as "new").
+    """
+    return await _fetch(
+        conn,
+        """
+        SELECT a.name AS achievement_name, a.icon_url, a.points,
+               pg.name AS game_name, pg.platform, pg.id AS platform_game_id,
+               ua.unlocked_at
+        FROM user_achievements ua
+        JOIN achievements a ON a.id = ua.achievement_id
+        JOIN platform_games pg ON pg.id = a.platform_game_id
+        WHERE ua.linked_account_id = %s AND ua.unlocked = TRUE AND ua.unlocked_at > %s
+        ORDER BY ua.unlocked_at ASC
+        """,
+        linked_account_id, since,
+    )
+
+
 async def upsert_user_achievement(conn, linked_account_id: int, achievement_id: int,
                                    unlocked: bool, unlocked_at=None) -> None:
     await conn.execute(
