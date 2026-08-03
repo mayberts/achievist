@@ -127,10 +127,10 @@ export function GameDetailPage() {
       {art && (
         <>
           <div
-            className="fixed inset-0 -z-10 bg-cover bg-center opacity-40 blur-[100px] scale-125"
+            className="fixed inset-0 -z-10 bg-cover bg-center opacity-70"
             style={{ backgroundImage: `url(${art})` }}
           />
-          <div className="fixed inset-0 -z-10 bg-ink-950/60" />
+          <div className="fixed inset-0 -z-10 bg-gradient-to-t from-ink-950 via-ink-950/70 to-ink-950/30" />
         </>
       )}
 
