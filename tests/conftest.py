@@ -1,7 +1,7 @@
 """
 Shared fixtures for DB-backed integration tests.
 
-Most of Pantheon's actual behavior (account dedup, achievement-unlock
+Most of Achievist's actual behavior (account dedup, achievement-unlock
 detection, schema migrations) lives behind Postgres queries that the
 DB-free unit/smoke tests can't exercise. These fixtures point the app at a
 real (throwaway) test database when one is reachable, and skip the tests

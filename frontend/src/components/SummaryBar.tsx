@@ -56,7 +56,7 @@ export function SummaryBar({ summary }: { summary: Summary }) {
           onClick={() => setEditing(true)}
           className="group inline-flex items-center gap-1.5 text-lg font-bold text-slate-100 hover:text-slate-200"
         >
-          {profile?.display_name || "Pantheon"}
+          {profile?.display_name || "Player"}
           <Pencil size={13} className="text-faint opacity-0 transition group-hover:opacity-100" />
         </button>
         <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-sm">

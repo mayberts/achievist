@@ -1,7 +1,7 @@
 """
 Database backups.
 
-Uses `pg_dump` (custom format) against DATABASE_URL, since Pantheon's entire
+Uses `pg_dump` (custom format) against DATABASE_URL, since Achievist's entire
 state — synced games/achievements *and* connected-account credentials — lives
 in Postgres. Backups land in /backups (a persistent volume) with a retention
 policy that keeps the most recent N.

@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useRef, lazy, Suspense } from "react";
 import { Route, Routes, useNavigate } from "react-router-dom";
-import { RefreshCw } from "lucide-react";
+import { RefreshCw, Trophy } from "lucide-react";
 import { api } from "./api";
 import type { Summary, SyncProgress } from "./types";
 import { Nav, type Tab } from "./components/Nav";
@@ -135,6 +135,11 @@ export default function App() {
   return (
     <div className="min-h-screen">
       <div className="mx-auto max-w-6xl px-3 py-4 sm:px-4 sm:py-6">
+        <div className="mb-4 flex items-center gap-2">
+          <Trophy size={20} className="text-accent" />
+          <span className="text-lg font-bold tracking-tight text-slate-100">Achievist</span>
+        </div>
+
         {summary && <SummaryBar summary={summary} />}
 
         <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
