@@ -6,6 +6,7 @@ import type {
   GameDetail,
   GamesResponse,
   PlatformSchema,
+  Profile,
   RecentUnlocksResponse,
   SgdbSearchResponse,
   Summary,
@@ -48,6 +49,9 @@ export interface GamesQuery {
 
 export const api = {
   summary: () => get<Summary>("/api/summary"),
+
+  profile: () => get<Profile>("/api/profile"),
+  updateProfile: (p: Profile) => send<Profile>("/api/profile", "PUT", p),
 
   games: (q: GamesQuery) => {
     const params = new URLSearchParams();

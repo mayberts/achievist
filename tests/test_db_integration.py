@@ -138,3 +138,22 @@ async def test_unlocks_since_is_scoped_to_the_account(db_conn):
 
     assert len(events_a) == 1
     assert events_b == []
+
+
+async def test_get_profile_defaults_to_null_fields(db_conn):
+    profile = await db.get_profile(db_conn)
+    assert profile == {"display_name": None, "avatar_url": None}
+
+
+async def test_update_profile_sets_both_fields(db_conn):
+    updated = await db.update_profile(db_conn, "Nick", "https://example.com/avatar.png")
+    assert updated == {"display_name": "Nick", "avatar_url": "https://example.com/avatar.png"}
+
+    fetched = await db.get_profile(db_conn)
+    assert fetched == updated
+
+
+async def test_update_profile_can_clear_a_field_back_to_null(db_conn):
+    await db.update_profile(db_conn, "Nick", "https://example.com/avatar.png")
+    cleared = await db.update_profile(db_conn, "Nick", None)
+    assert cleared == {"display_name": "Nick", "avatar_url": None}

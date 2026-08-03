@@ -9,6 +9,11 @@ export interface PlatformSummary {
   most_played: boolean;
 }
 
+export interface Profile {
+  display_name: string | null;
+  avatar_url: string | null;
+}
+
 export interface Summary {
   total_games: number;
   total_earned: number;

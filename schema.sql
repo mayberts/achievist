@@ -105,3 +105,12 @@ CREATE TABLE IF NOT EXISTS sync_runs (
 CREATE INDEX IF NOT EXISTS idx_user_games_account ON user_games(linked_account_id);
 CREATE INDEX IF NOT EXISTS idx_user_ach_account ON user_achievements(linked_account_id);
 CREATE INDEX IF NOT EXISTS idx_platform_games_igdb ON platform_games(igdb_id);
+
+-- Single-row profile: this app is single-user, so there's exactly one.
+CREATE TABLE IF NOT EXISTS profile (
+    id              INT PRIMARY KEY DEFAULT 1,
+    display_name    TEXT,
+    avatar_url      TEXT,
+    CHECK (id = 1)
+);
+INSERT INTO profile (id) VALUES (1) ON CONFLICT (id) DO NOTHING;

@@ -1,7 +1,10 @@
-import { Trophy, Gamepad2, Crown, Clock, Target, User } from "lucide-react";
-import type { Summary } from "../types";
+import { useEffect, useState } from "react";
+import { Trophy, Gamepad2, Crown, Clock, Target, User, Pencil } from "lucide-react";
+import type { Profile, Summary } from "../types";
 import { fmtNum, fmtPlaytime } from "../lib/format";
 import { platformLabel } from "../lib/platforms";
+import { api } from "../api";
+import { ProfileEditModal } from "./ProfileEditModal";
 
 function Stat({ icon, value, title }: { icon: React.ReactNode; value: string; title: string }) {
   return (
@@ -13,6 +16,15 @@ function Stat({ icon, value, title }: { icon: React.ReactNode; value: string; ti
 }
 
 export function SummaryBar({ summary }: { summary: Summary }) {
+  const [profile, setProfile] = useState<Profile | null>(null);
+  const [editing, setEditing] = useState(false);
+
+  useEffect(() => {
+    api.profile()
+      .then(setProfile)
+      .catch(() => setProfile({ display_name: null, avatar_url: null }));
+  }, []);
+
   const totalPlaytime = summary.by_platform.reduce(
     (acc, p) => acc + (p.total_playtime_minutes ?? 0),
     0,
@@ -21,12 +33,31 @@ export function SummaryBar({ summary }: { summary: Summary }) {
 
   return (
     <div className="flex items-center gap-3 rounded-card border border-line/50 bg-ink-850/45 p-3 backdrop-blur-md sm:gap-4 sm:p-4">
-      <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-full bg-ink-700 text-muted sm:h-16 sm:w-16">
-        <User size={24} className="sm:hidden" />
-        <User size={30} className="hidden sm:block" />
-      </div>
+      <button
+        onClick={() => setEditing(true)}
+        className="group relative flex h-12 w-12 flex-shrink-0 items-center justify-center overflow-hidden rounded-full bg-ink-700 text-muted sm:h-16 sm:w-16"
+        title="Edit profile"
+      >
+        {profile?.avatar_url ? (
+          <img src={profile.avatar_url} alt="" className="h-full w-full object-cover" />
+        ) : (
+          <>
+            <User size={24} className="sm:hidden" />
+            <User size={30} className="hidden sm:block" />
+          </>
+        )}
+        <span className="absolute inset-0 hidden items-center justify-center bg-black/50 group-hover:flex">
+          <Pencil size={16} className="text-slate-100" />
+        </span>
+      </button>
       <div className="min-w-0">
-        <div className="text-lg font-bold text-slate-100">Pantheon</div>
+        <button
+          onClick={() => setEditing(true)}
+          className="group inline-flex items-center gap-1.5 text-lg font-bold text-slate-100 hover:text-slate-200"
+        >
+          {profile?.display_name || "Pantheon"}
+          <Pencil size={13} className="text-faint opacity-0 transition group-hover:opacity-100" />
+        </button>
         <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-sm">
           <Stat icon={<Trophy size={15} />} value={fmtNum(summary.total_earned)} title="Achievements earned" />
           <span className="h-4 w-px bg-line" />
@@ -50,6 +81,14 @@ export function SummaryBar({ summary }: { summary: Summary }) {
           ))}
         </div>
       </div>
+
+      {editing && profile && (
+        <ProfileEditModal
+          profile={profile}
+          onClose={() => setEditing(false)}
+          onSaved={setProfile}
+        />
+      )}
     </div>
   );
 }

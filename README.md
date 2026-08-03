@@ -122,6 +122,7 @@ The frontend is a full SPA; these are the main endpoints it talks to (see `app/m
 
 | Method | Path | Purpose |
 |---|---|---|
+| GET / PUT | `/api/profile` | Your display name and avatar (shown in the header — click it to edit) |
 | GET | `/api/summary` | Overall + per-platform stats |
 | GET | `/api/games` | Library, paginated (`sort`, `platform`, `completion`, `search`) |
 | GET | `/api/games/{id}` | Game detail with achievements and rarity |

@@ -324,3 +324,23 @@ async def upsert_user_achievement(conn, linked_account_id: int, achievement_id: 
         """,
         (linked_account_id, achievement_id, unlocked, unlocked_at),
     )
+
+
+async def get_profile(conn) -> dict:
+    row = await _fetchrow(conn, "SELECT display_name, avatar_url FROM profile WHERE id = 1")
+    return dict(row) if row else {"display_name": None, "avatar_url": None}
+
+
+async def update_profile(conn, display_name: str | None, avatar_url: str | None) -> dict:
+    """Overwrites both fields (not a partial patch) — pass None to clear a field
+    back to its default, since the caller always submits the whole form."""
+    row = await _fetchrow(
+        conn,
+        """
+        UPDATE profile SET display_name = %s, avatar_url = %s
+        WHERE id = 1
+        RETURNING display_name, avatar_url
+        """,
+        display_name, avatar_url,
+    )
+    return dict(row)
