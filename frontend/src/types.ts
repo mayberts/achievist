@@ -42,6 +42,18 @@ export interface GameDetail extends Game {
   total_points: number;
 }
 
+export interface SgdbSearchResult {
+  id: number;
+  name: string;
+  heroes: string[];
+  grids: string[];
+}
+
+export interface SgdbSearchResponse {
+  games?: SgdbSearchResult[];
+  error?: string;
+}
+
 export interface Achievement {
   platform_ach_id: string;
   name: string | null;

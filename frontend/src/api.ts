@@ -6,6 +6,7 @@ import type {
   GameDetail,
   GamesResponse,
   PlatformSchema,
+  SgdbSearchResponse,
   Summary,
   SyncProgress,
 } from "./types";
@@ -88,4 +89,12 @@ export const api = {
   createBackup: () => send<{ filename: string }>("/api/backups", "POST"),
   deleteBackup: (filename: string) =>
     send<void>(`/api/backups/${encodeURIComponent(filename)}`, "DELETE"),
+
+  // Change Cover (manual SteamGridDB override)
+  sgdbSearch: (q: string) => get<SgdbSearchResponse>(`/api/sgdb-search?q=${encodeURIComponent(q)}`),
+  sgdbSet: (platformGameId: number, url: string) =>
+    send<{ status: string }>(
+      `/api/sgdb-set?platform_game_id=${platformGameId}&url=${encodeURIComponent(url)}`,
+      "POST",
+    ),
 };
