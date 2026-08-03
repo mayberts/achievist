@@ -3,12 +3,21 @@ import type { Game } from "../types";
 import { fmtPlaytime, fmtDate } from "../lib/format";
 import { PlatformBadge } from "./PlatformBadge";
 
-function banner(g: Game): string | null {
-  return g.sgdb_cover_url || g.igdb_cover_url || g.icon_url || null;
+// Only sgdb_cover_url is genuine landscape art (SGDB's 460x215/920x430 grids,
+// close to this card's aspect ratio). igdb_cover_url is IGDB's t_cover_big_2x
+// (portrait box art) and icon_url is a small square Steam icon — center-cropping
+// either of those to fill a wide card just slices through the artwork/logo.
+function landscapeArt(g: Game): string | null {
+  return g.sgdb_cover_url || null;
+}
+
+function fallbackArt(g: Game): string | null {
+  return g.igdb_cover_url || g.icon_url || null;
 }
 
 export function GameCard({ game, onClick }: { game: Game; onClick?: () => void }) {
-  const art = banner(game);
+  const wide = landscapeArt(game);
+  const fallback = !wide ? fallbackArt(game) : null;
   const pct = Math.round(game.completion_pct ?? 0);
   const playtime = fmtPlaytime(game.playtime_minutes);
   const played = fmtDate(game.last_played_at);
@@ -22,22 +31,47 @@ export function GameCard({ game, onClick }: { game: Game; onClick?: () => void }
       onClick={onClick}
       className="group relative flex h-32 w-full overflow-hidden rounded-card border border-line bg-ink-850 text-left transition hover:border-ink-600"
     >
-      {/* full-bleed cover art, sharp — a left-side gradient (in the app's own
-          ink colors) carries the text instead of blurring/dimming the art */}
-      {art ? (
-        <img
-          src={art}
-          alt=""
-          className="pointer-events-none absolute inset-0 h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
-          loading="lazy"
-        />
+      {wide ? (
+        <>
+          {/* full-bleed cover art, sharp — a left-side gradient (in the app's
+              own ink colors) carries the text instead of blurring the art */}
+          <img
+            src={wide}
+            alt=""
+            className="pointer-events-none absolute inset-0 h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
+            loading="lazy"
+          />
+          <div className="absolute inset-0 bg-gradient-to-r from-ink-850 from-10% via-ink-850/85 via-45% to-transparent to-[90%]" />
+          <div className="absolute inset-0 bg-gradient-to-t from-ink-850/40 to-transparent" />
+        </>
+      ) : fallback ? (
+        <>
+          {/* no landscape art available — this source is portrait/square, so
+              blur it into a soft ambient backdrop instead of hard-cropping it */}
+          <div
+            className="pointer-events-none absolute inset-0 scale-110 bg-cover bg-center opacity-[0.16] blur-md transition-opacity duration-300 group-hover:opacity-[0.24]"
+            style={{ backgroundImage: `url(${fallback})` }}
+          />
+          <div className="absolute inset-0 bg-gradient-to-r from-ink-850 via-ink-850/70 to-ink-850/95" />
+        </>
       ) : (
         <div className="absolute inset-0 flex items-center justify-center text-faint">
           <Trophy size={22} />
         </div>
       )}
-      <div className="absolute inset-0 bg-gradient-to-r from-ink-850 from-10% via-ink-850/85 via-45% to-transparent to-[90%]" />
-      <div className="absolute inset-0 bg-gradient-to-t from-ink-850/40 to-transparent" />
+
+      {/* on the fallback path, show the actual art crisply in a properly-fit
+          box instead of only as an unrecognizable blur */}
+      {fallback && (
+        <div className="relative z-10 flex flex-shrink-0 items-center pl-4">
+          <img
+            src={fallback}
+            alt=""
+            className="h-24 w-16 rounded-md object-cover ring-1 ring-black/40"
+            loading="lazy"
+          />
+        </div>
+      )}
 
       {/* content */}
       <div className="relative z-10 flex min-w-0 flex-1 flex-col justify-center gap-1.5 px-4 py-3">
