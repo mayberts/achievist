@@ -1,12 +1,13 @@
-import { Gamepad2, Settings2, BarChart3, Activity } from "lucide-react";
+import { Gamepad2, Settings2, BarChart3, Activity, Wrench } from "lucide-react";
 
-export type Tab = "games" | "activity" | "accounts" | "statistics";
+export type Tab = "games" | "activity" | "accounts" | "statistics" | "maintenance";
 
 const TABS: { key: Tab; label: string; icon: React.ReactNode }[] = [
   { key: "games", label: "Games", icon: <Gamepad2 size={16} /> },
   { key: "activity", label: "Activity", icon: <Activity size={16} /> },
   { key: "accounts", label: "Accounts", icon: <Settings2 size={16} /> },
   { key: "statistics", label: "Statistics", icon: <BarChart3 size={16} /> },
+  { key: "maintenance", label: "Maintenance", icon: <Wrench size={16} /> },
 ];
 
 export function Nav({

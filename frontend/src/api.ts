@@ -97,4 +97,6 @@ export const api = {
       `/api/sgdb-set?platform_game_id=${platformGameId}&url=${encodeURIComponent(url)}`,
       "POST",
     ),
+  sgdbRefresh: (force: boolean) =>
+    send<{ status: string }>(`/api/sgdb-refresh?force=${force}`, "POST"),
 };

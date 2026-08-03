@@ -85,11 +85,16 @@ away. This happens automatically:
 - A `pg_dump -Fc` runs on a schedule (`BACKUP_INTERVAL_HOURS`, default 24h) and
   is written to a `/backups` volume, keeping the most recent `BACKUP_KEEP_COUNT`
   (default 14).
-- The **Accounts** page has a **Backups** section to trigger a backup on
+- The **Maintenance** page has a **Backups** section to trigger a backup on
   demand, download any backup, or delete old ones.
 - The same is available directly: `POST /api/backups` (create), `GET
   /api/backups` (list), `GET /api/backups/{filename}` (download), `DELETE
   /api/backups/{filename}` (delete).
+
+The **Maintenance** page also has a **Cover Art** section to re-fetch every
+game's SteamGridDB cover art from scratch (`POST /api/sgdb-refresh?force=true`)
+— useful after a change to which art is preferred, or if a batch of covers
+still look wrong.
 
 **Restore** a downloaded `.dump` file into a running stack:
 
