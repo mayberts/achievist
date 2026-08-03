@@ -1,12 +1,12 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
-import { ArrowLeft, Trophy, Clock, Calendar, ExternalLink, Lock, ImageUp } from "lucide-react";
+import { ArrowLeft, Trophy, Clock, Calendar, ExternalLink, Lock, ImageUp, Search } from "lucide-react";
 import { api } from "../api";
 import type { Achievement, GameDetail } from "../types";
 import { fmtPlaytime, fmtDate, fmtNum } from "../lib/format";
 import { PlatformBadge } from "../components/PlatformBadge";
 import { PLATFORM_META } from "../lib/platforms";
-import { RARITY_TIER_CLASS, rarityTier } from "../lib/rarity";
+import { RARITY_TIER_CLASS, RARITY_TIER_HEX, rarityTier } from "../lib/rarity";
 import { ChangeCoverModal } from "../components/ChangeCoverModal";
 
 function banner(g: GameDetail): string | null {
@@ -18,6 +18,17 @@ function hltb(h: number | null): string | null {
   return `${h}h`;
 }
 
+type StatusFilter = "all" | "unlocked" | "locked";
+type SortKey = "default" | "name" | "rarity" | "points" | "unlocked_at";
+
+const SORTS: { key: SortKey; label: string }[] = [
+  { key: "default", label: "Default" },
+  { key: "rarity", label: "Rarity (rarest first)" },
+  { key: "points", label: "Points (highest first)" },
+  { key: "name", label: "Name (A-Z)" },
+  { key: "unlocked_at", label: "Unlock date (most recent)" },
+];
+
 export function GameDetailPage() {
   const { id } = useParams();
   const gameId = Number(id);
@@ -28,10 +39,17 @@ export function GameDetailPage() {
   const [changingCover, setChangingCover] = useState(false);
   const [notFound, setNotFound] = useState(false);
 
+  const [search, setSearch] = useState("");
+  const [status, setStatus] = useState<StatusFilter>("all");
+  const [sort, setSort] = useState<SortKey>("default");
+
   useEffect(() => {
     setGame(null);
     setAchs(null);
     setNotFound(false);
+    setSearch("");
+    setStatus("all");
+    setSort("default");
     api.gameDetail(gameId).then(setGame).catch(() => setNotFound(true));
     api.gameAchievements(gameId).then(setAchs).catch(() => setAchs([]));
   }, [gameId]);
@@ -44,6 +62,33 @@ export function GameDetailPage() {
     if (location.key !== "default") navigate(-1);
     else navigate("/");
   }
+
+  const visibleAchs = useMemo(() => {
+    if (!achs) return null;
+    const q = search.trim().toLowerCase();
+    let list = achs.filter((a) => {
+      if (status === "unlocked" && !a.unlocked) return false;
+      if (status === "locked" && a.unlocked) return false;
+      if (q && !`${a.name ?? ""} ${a.description ?? ""}`.toLowerCase().includes(q)) return false;
+      return true;
+    });
+    list = [...list];
+    switch (sort) {
+      case "name":
+        list.sort((a, b) => (a.name ?? a.platform_ach_id).localeCompare(b.name ?? b.platform_ach_id));
+        break;
+      case "rarity":
+        list.sort((a, b) => (a.rarity_pct ?? 101) - (b.rarity_pct ?? 101));
+        break;
+      case "points":
+        list.sort((a, b) => (b.points ?? 0) - (a.points ?? 0));
+        break;
+      case "unlocked_at":
+        list.sort((a, b) => (b.unlocked_at ?? "").localeCompare(a.unlocked_at ?? ""));
+        break;
+    }
+    return list;
+  }, [achs, search, status, sort]);
 
   if (notFound) {
     return (
@@ -149,7 +194,7 @@ export function GameDetailPage() {
           </div>
         </div>
 
-        {/* progress + hltb */}
+        {/* progress */}
         <div className="border-b border-line px-5 pb-4">
           <div className="flex items-center gap-3">
             <div className="h-2 flex-1 overflow-hidden rounded-full bg-ink-700">
@@ -160,70 +205,141 @@ export function GameDetailPage() {
             </div>
             <span className="text-sm font-semibold tabular-nums text-slate-200">{pct}%</span>
           </div>
-          {hltbParts.length > 0 && (
-            <div className="mt-3 flex flex-wrap gap-4 text-xs text-muted">
-              {hltbParts.map(([label, v]) => (
-                <span key={label}>
-                  <span className="text-faint">{label}:</span> {v}
-                </span>
-              ))}
-            </div>
-          )}
         </div>
 
-        {/* achievements */}
-        <div className="p-3">
-          {achs === null ? (
-            <div className="py-10 text-center text-muted">Loading achievements…</div>
-          ) : achs.length === 0 ? (
-            <div className="py-10 text-center text-muted">No achievement details stored.</div>
-          ) : (
-            <ul className="space-y-1">
-              {achs.map((a) => {
-                const unlocked = !!a.unlocked;
-                return (
-                  <li
-                    key={a.platform_ach_id}
-                    className={`flex items-center gap-3 rounded-lg p-2 ${unlocked ? "bg-ink-800/60" : "opacity-60"}`}
-                  >
-                    <div className="relative h-11 w-11 flex-shrink-0 overflow-hidden rounded-md bg-ink-900">
-                      {a.icon_url ? (
-                        <img
-                          src={a.icon_url}
-                          alt=""
-                          className={`h-full w-full object-cover ${unlocked ? "" : "grayscale"}`}
-                          loading="lazy"
+        {/* main content: achievements + sidebar */}
+        <div className="grid grid-cols-1 gap-4 p-3 lg:grid-cols-[1fr_260px]">
+          <div className="min-w-0">
+            {/* toolbar */}
+            <div className="mb-3 flex flex-wrap items-center gap-2">
+              <div className="flex min-w-0 flex-1 items-center gap-2 rounded-lg border border-line bg-ink-900 px-3 py-2">
+                <Search size={14} className="flex-shrink-0 text-faint" />
+                <input
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Search achievements…"
+                  className="w-full min-w-0 bg-transparent text-sm text-slate-100 outline-none placeholder:text-faint"
+                />
+              </div>
+              <select
+                value={status}
+                onChange={(e) => setStatus(e.target.value as StatusFilter)}
+                className="rounded-lg border border-line bg-ink-900 px-3 py-2 text-sm text-slate-200 outline-none"
+              >
+                <option value="all">All achievements</option>
+                <option value="unlocked">Unlocked</option>
+                <option value="locked">Locked</option>
+              </select>
+              <select
+                value={sort}
+                onChange={(e) => setSort(e.target.value as SortKey)}
+                className="rounded-lg border border-line bg-ink-900 px-3 py-2 text-sm text-slate-200 outline-none"
+              >
+                {SORTS.map((s) => (
+                  <option key={s.key} value={s.key}>{s.label}</option>
+                ))}
+              </select>
+            </div>
+
+            {achs === null ? (
+              <div className="py-10 text-center text-muted">Loading achievements…</div>
+            ) : achs.length === 0 ? (
+              <div className="py-10 text-center text-muted">No achievement details stored.</div>
+            ) : visibleAchs && visibleAchs.length === 0 ? (
+              <div className="py-10 text-center text-muted">No achievements match your filters.</div>
+            ) : (
+              <ul className="space-y-1">
+                {visibleAchs!.map((a) => {
+                  const unlocked = !!a.unlocked;
+                  return (
+                    <li
+                      key={a.platform_ach_id}
+                      className={`flex items-center gap-3 rounded-lg p-2 ${unlocked ? "bg-ink-800/60" : "opacity-60"}`}
+                    >
+                      <div className="relative h-11 w-11 flex-shrink-0 overflow-hidden rounded-md bg-ink-900">
+                        {a.icon_url ? (
+                          <img
+                            src={a.icon_url}
+                            alt=""
+                            className={`h-full w-full object-cover ${unlocked ? "" : "grayscale"}`}
+                            loading="lazy"
+                          />
+                        ) : (
+                          <div className="flex h-full w-full items-center justify-center text-faint">
+                            <Trophy size={16} />
+                          </div>
+                        )}
+                        {!unlocked && (
+                          <div className="absolute inset-0 flex items-center justify-center bg-black/40">
+                            <Lock size={13} className="text-slate-300" />
+                          </div>
+                        )}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-sm font-medium text-slate-100">{a.name || a.platform_ach_id}</div>
+                        {a.description && <div className="truncate text-xs text-muted">{a.description}</div>}
+                      </div>
+                      <div className="flex-shrink-0 text-right">
+                        {a.rarity_pct != null && (
+                          <div className={`text-xs font-semibold ${RARITY_TIER_CLASS[rarityTier(a.rarity_pct)]}`}>
+                            {a.rarity_pct}%
+                          </div>
+                        )}
+                        {unlocked && fmtDate(a.unlocked_at) && (
+                          <div className="text-[11px] text-faint">{fmtDate(a.unlocked_at)}</div>
+                        )}
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </div>
+
+          {/* sidebar */}
+          <div className="space-y-3 lg:border-l lg:border-line lg:pl-4">
+            <div className="grid grid-cols-3 gap-2 lg:grid-cols-1">
+              {game && fmtPlaytime(game.playtime_minutes) && (
+                <StatBox label="Playtime" value={fmtPlaytime(game.playtime_minutes)!} />
+              )}
+              <StatBox label="Completion" value={`${pct}%`} />
+              {hltbParts.length > 0 && <StatBox label="Time to beat" value={hltbParts[0][1]!} />}
+            </div>
+
+            {hltbParts.length > 1 && (
+              <div className="rounded-lg border border-line bg-ink-900 p-3">
+                <div className="mb-1.5 text-xs font-semibold text-slate-200">Time to beat</div>
+                <div className="space-y-1 text-xs text-muted">
+                  {hltbParts.map(([label, v]) => (
+                    <div key={label} className="flex justify-between">
+                      <span>{label}</span>
+                      <span className="text-slate-300">{v}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {game && game.rarity_summary.length > 0 && (
+              <div className="rounded-lg border border-line bg-ink-900 p-3">
+                <div className="mb-1.5 text-xs font-semibold text-slate-200">Rarity breakdown</div>
+                <div className="space-y-1.5">
+                  {game.rarity_summary.map((r) => (
+                    <div key={r.tier} className="flex items-center justify-between text-xs">
+                      <span className="flex items-center gap-1.5">
+                        <span
+                          className="h-2 w-2 rounded-full"
+                          style={{ backgroundColor: RARITY_TIER_HEX[r.tier] }}
                         />
-                      ) : (
-                        <div className="flex h-full w-full items-center justify-center text-faint">
-                          <Trophy size={16} />
-                        </div>
-                      )}
-                      {!unlocked && (
-                        <div className="absolute inset-0 flex items-center justify-center bg-black/40">
-                          <Lock size={13} className="text-slate-300" />
-                        </div>
-                      )}
+                        <span className={RARITY_TIER_CLASS[r.tier]}>{r.tier}</span>
+                      </span>
+                      <span className="font-medium text-slate-300">{r.cnt}</span>
                     </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="truncate text-sm font-medium text-slate-100">{a.name || a.platform_ach_id}</div>
-                      {a.description && <div className="truncate text-xs text-muted">{a.description}</div>}
-                    </div>
-                    <div className="flex-shrink-0 text-right">
-                      {a.rarity_pct != null && (
-                        <div className={`text-xs font-semibold ${RARITY_TIER_CLASS[rarityTier(a.rarity_pct)]}`}>
-                          {a.rarity_pct}%
-                        </div>
-                      )}
-                      {unlocked && fmtDate(a.unlocked_at) && (
-                        <div className="text-[11px] text-faint">{fmtDate(a.unlocked_at)}</div>
-                      )}
-                    </div>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -235,6 +351,15 @@ export function GameDetailPage() {
           onChanged={(url) => setGame((prev) => (prev ? { ...prev, sgdb_cover_url: url || null } : prev))}
         />
       )}
+    </div>
+  );
+}
+
+function StatBox({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg border border-line bg-ink-900 px-3 py-2 text-center lg:text-left">
+      <div className="text-[10px] uppercase tracking-wide text-faint">{label}</div>
+      <div className="mt-0.5 text-sm font-semibold text-slate-200">{value}</div>
     </div>
   );
 }
