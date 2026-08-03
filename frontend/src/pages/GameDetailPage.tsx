@@ -121,6 +121,19 @@ export function GameDetailPage() {
 
   return (
     <div>
+      {/* full-page backdrop, pinned behind the header/nav too (they have no
+          opaque background of their own) via a negative z-index rather than
+          relying on DOM order */}
+      {art && (
+        <>
+          <div
+            className="fixed inset-0 -z-10 bg-cover bg-center opacity-60 blur-lg scale-110"
+            style={{ backgroundImage: `url(${art})` }}
+          />
+          <div className="fixed inset-0 -z-10 bg-ink-950/55" />
+        </>
+      )}
+
       <button
         onClick={goBack}
         className="mb-4 inline-flex items-center gap-1.5 text-sm text-muted transition hover:text-slate-200"
@@ -128,16 +141,9 @@ export function GameDetailPage() {
         <ArrowLeft size={15} /> Back
       </button>
 
-      <div className="overflow-hidden rounded-card border border-line bg-ink-850 shadow-2xl">
+      <div className="overflow-hidden rounded-card border border-line/50 bg-ink-850/45 shadow-2xl backdrop-blur-md">
         {/* header banner */}
         <div className="relative">
-          {art && (
-            <div
-              className="absolute inset-0 bg-cover bg-center opacity-25"
-              style={{ backgroundImage: `url(${art})` }}
-            />
-          )}
-          <div className="absolute inset-0 bg-gradient-to-t from-ink-850 to-ink-850/40" />
           <div className="relative flex flex-col gap-4 p-4 sm:flex-row sm:p-5">
             {art && (
               <img
@@ -195,7 +201,7 @@ export function GameDetailPage() {
         </div>
 
         {/* progress */}
-        <div className="border-b border-line px-5 pb-4">
+        <div className="border-b border-line/50 px-5 pb-4">
           <div className="flex items-center gap-3">
             <div className="h-2 flex-1 overflow-hidden rounded-full bg-ink-700">
               <div
@@ -212,7 +218,7 @@ export function GameDetailPage() {
           <div className="min-w-0">
             {/* toolbar */}
             <div className="mb-3 flex flex-wrap items-center gap-2">
-              <div className="flex min-w-0 flex-1 items-center gap-2 rounded-lg border border-line bg-ink-900 px-3 py-2">
+              <div className="flex min-w-0 flex-1 items-center gap-2 rounded-lg border border-line/50 bg-ink-900/50 px-3 py-2 backdrop-blur-sm">
                 <Search size={14} className="flex-shrink-0 text-faint" />
                 <input
                   value={search}
@@ -224,7 +230,7 @@ export function GameDetailPage() {
               <select
                 value={status}
                 onChange={(e) => setStatus(e.target.value as StatusFilter)}
-                className="rounded-lg border border-line bg-ink-900 px-3 py-2 text-sm text-slate-200 outline-none"
+                className="rounded-lg border border-line/50 bg-ink-900/50 px-3 py-2 text-sm text-slate-200 outline-none backdrop-blur-sm"
               >
                 <option value="all">All achievements</option>
                 <option value="unlocked">Unlocked</option>
@@ -233,7 +239,7 @@ export function GameDetailPage() {
               <select
                 value={sort}
                 onChange={(e) => setSort(e.target.value as SortKey)}
-                className="rounded-lg border border-line bg-ink-900 px-3 py-2 text-sm text-slate-200 outline-none"
+                className="rounded-lg border border-line/50 bg-ink-900/50 px-3 py-2 text-sm text-slate-200 outline-none backdrop-blur-sm"
               >
                 {SORTS.map((s) => (
                   <option key={s.key} value={s.key}>{s.label}</option>
@@ -297,7 +303,7 @@ export function GameDetailPage() {
           </div>
 
           {/* sidebar */}
-          <div className="space-y-3 lg:border-l lg:border-line lg:pl-4">
+          <div className="space-y-3 lg:border-l lg:border-line/50 lg:pl-4">
             <div className="grid grid-cols-3 gap-2 lg:grid-cols-1">
               {game && fmtPlaytime(game.playtime_minutes) && (
                 <StatBox label="Playtime" value={fmtPlaytime(game.playtime_minutes)!} />
@@ -307,7 +313,7 @@ export function GameDetailPage() {
             </div>
 
             {hltbParts.length > 1 && (
-              <div className="rounded-lg border border-line bg-ink-900 p-3">
+              <div className="rounded-lg border border-line/50 bg-ink-900/50 p-3 backdrop-blur-sm">
                 <div className="mb-1.5 text-xs font-semibold text-slate-200">Time to beat</div>
                 <div className="space-y-1 text-xs text-muted">
                   {hltbParts.map(([label, v]) => (
@@ -321,7 +327,7 @@ export function GameDetailPage() {
             )}
 
             {game && game.rarity_summary.length > 0 && (
-              <div className="rounded-lg border border-line bg-ink-900 p-3">
+              <div className="rounded-lg border border-line/50 bg-ink-900/50 p-3 backdrop-blur-sm">
                 <div className="mb-1.5 text-xs font-semibold text-slate-200">Rarity breakdown</div>
                 <div className="space-y-1.5">
                   {game.rarity_summary.map((r) => (
@@ -357,7 +363,7 @@ export function GameDetailPage() {
 
 function StatBox({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-lg border border-line bg-ink-900 px-3 py-2 text-center lg:text-left">
+    <div className="rounded-lg border border-line/50 bg-ink-900/50 px-3 py-2 text-center backdrop-blur-sm lg:text-left">
       <div className="text-[10px] uppercase tracking-wide text-faint">{label}</div>
       <div className="mt-0.5 text-sm font-semibold text-slate-200">{value}</div>
     </div>
