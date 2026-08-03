@@ -32,6 +32,7 @@ export function SummaryBar({ summary }: { summary: Summary }) {
   const platforms = [...summary.by_platform].sort((a, b) => b.earned - a.earned);
 
   return (
+    <>
     <div className="flex items-center gap-3 rounded-card border border-line/50 bg-ink-850/45 p-3 backdrop-blur-md sm:gap-4 sm:p-4">
       <button
         onClick={() => setEditing(true)}
@@ -81,14 +82,15 @@ export function SummaryBar({ summary }: { summary: Summary }) {
           ))}
         </div>
       </div>
-
-      {editing && profile && (
-        <ProfileEditModal
-          profile={profile}
-          onClose={() => setEditing(false)}
-          onSaved={setProfile}
-        />
-      )}
     </div>
+
+    {editing && profile && (
+      <ProfileEditModal
+        profile={profile}
+        onClose={() => setEditing(false)}
+        onSaved={setProfile}
+      />
+    )}
+    </>
   );
 }
