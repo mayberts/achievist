@@ -405,6 +405,22 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="Pantheon", lifespan=lifespan)
 
 
+@app.get("/api/profile")
+async def get_profile():
+    pool = await db.get_pool()
+    async with pool.connection() as conn:
+        return await db.get_profile(conn)
+
+
+@app.put("/api/profile")
+async def update_profile(payload: dict):
+    display_name = (payload.get("display_name") or "").strip() or None
+    avatar_url = (payload.get("avatar_url") or "").strip() or None
+    pool = await db.get_pool()
+    async with pool.connection() as conn:
+        return await db.update_profile(conn, display_name, avatar_url)
+
+
 @app.get("/api/summary")
 async def summary():
     pool = await db.get_pool()

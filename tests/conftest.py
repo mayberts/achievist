@@ -31,6 +31,7 @@ _APP_TABLES = [
     "platform_games",
     "igdb_games",
     "linked_accounts",
+    "profile",
 ]
 
 
