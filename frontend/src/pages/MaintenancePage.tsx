@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { DatabaseBackup, Download, ImageDown, Trash2 } from "lucide-react";
+import { DatabaseBackup, Download, Clock, ImageDown, Trash2 } from "lucide-react";
 import { api } from "../api";
 import type { BackupInfo } from "../types";
 import { fmtBytes, fmtRelative } from "../lib/format";
@@ -10,11 +10,49 @@ export function MaintenancePage() {
     <div>
       <div className="mb-2 text-lg font-semibold text-slate-100">Maintenance</div>
       <p className="mb-5 text-sm text-muted">
-        App-wide background jobs: database backups and cover art enrichment.
+        App-wide background jobs: database backups and enrichment (cover art, time-to-beat).
       </p>
 
       <CoversSection />
+      <HltbSection />
       <BackupsSection />
+    </div>
+  );
+}
+
+function HltbSection() {
+  const [refreshing, setRefreshing] = useState(false);
+  const toast = useToast();
+
+  async function refreshHltb() {
+    setRefreshing(true);
+    try {
+      await api.hltbRefresh();
+      toast.info("Time-to-beat refresh started — this can take a few minutes for a large library.");
+    } catch (e) {
+      toast.error(String(e instanceof Error ? e.message : e));
+    } finally {
+      setTimeout(() => setRefreshing(false), 1500);
+    }
+  }
+
+  return (
+    <div className="mb-8">
+      <div className="mb-2 text-base font-semibold text-slate-100">Time to Beat</div>
+      <p className="mb-3 text-sm text-muted">
+        Re-fetch every game's HowLongToBeat data from scratch. Useful after a name-matching fix, or
+        if a batch of games show no time-to-beat despite having one on HowLongToBeat.com.
+      </p>
+      <div className="rounded-card border border-line bg-ink-850 p-4">
+        <button
+          onClick={refreshHltb}
+          disabled={refreshing}
+          className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-2 text-sm font-semibold text-white transition hover:bg-accent/90 disabled:opacity-50"
+        >
+          <Clock size={15} className={refreshing ? "animate-pulse" : ""} />
+          {refreshing ? "Starting…" : "Refresh time to beat"}
+        </button>
+      </div>
     </div>
   );
 }
