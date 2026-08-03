@@ -1,4 +1,4 @@
-# Pantheon
+# Achievist
 
 A self-hosted, single-user cross-platform achievement aggregator. Track achievements, trophies, and playtime across Steam, Xbox, PlayStation, Epic Games, RetroAchievements, Ubisoft Connect, Guild Wars 2, and Wargaming titles — one dashboard, running on your own box.
 
@@ -78,7 +78,7 @@ Copy `.env.example` to `.env` for these — none are required to start the app:
 
 ## Backups
 
-Everything Pantheon knows — synced games/achievements *and* connected-account
+Everything Achievist knows — synced games/achievements *and* connected-account
 credentials — lives in a single Postgres database, so backups are a `pg_dump`
 away. This happens automatically:
 
@@ -178,7 +178,7 @@ CI (`.github/workflows/test.yml`) runs the backend test suite and a frontend pro
 ```bash
 git init
 git add .
-git commit -m "Initial Pantheon"
+git commit -m "Initial Achievist"
 git branch -M main
 git remote add origin git@github.com:<you>/pantheon.git
 git push -u origin main

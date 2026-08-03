@@ -60,7 +60,7 @@ export function ProfileEditModal({
             <input
               value={displayName}
               onChange={(e) => setDisplayName(e.target.value)}
-              placeholder="Pantheon"
+              placeholder="Player"
               className="w-full rounded-lg border border-line bg-ink-900 px-3 py-2 text-sm text-slate-100 outline-none placeholder:text-faint"
             />
           </div>

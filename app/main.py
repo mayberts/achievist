@@ -402,7 +402,7 @@ async def lifespan(app: FastAPI):
         await db._pool.close()
 
 
-app = FastAPI(title="Pantheon", lifespan=lifespan)
+app = FastAPI(title="Achievist", lifespan=lifespan)
 
 
 @app.get("/api/profile")
@@ -1215,7 +1215,7 @@ async def trigger_sync():
 
 
 # ── Backups ───────────────────────────────────────────────────────────────────
-# Everything Pantheon knows — synced achievements and connected-account
+# Everything Achievist knows — synced achievements and connected-account
 # credentials alike — lives in Postgres, so a pg_dump backup covers all of it.
 
 @app.get("/api/backups")
@@ -1543,7 +1543,7 @@ async def xbox_setup_poll(device_code: str):
 
 @app.get("/api/xbox-360-debug")
 async def xbox_360_debug(game_id: int):
-    """Return raw contract v1 achievement API responses for a 360 game (use Pantheon game_id from /game/<id> URL)."""
+    """Return raw contract v1 achievement API responses for a 360 game (use the Achievist game_id from /game/<id> URL)."""
     from app.xbox_auth import get_tokens, load_refresh_token
     from app.platforms.xbox import _xbl_headers, _ACH
     # Look up the Xbox title_id from the DB
