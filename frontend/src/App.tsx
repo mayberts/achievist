@@ -9,6 +9,7 @@ import { useToast } from "./components/Toast";
 import { GamesPage } from "./pages/GamesPage";
 import { ActivityPage } from "./pages/ActivityPage";
 import { AccountsPage } from "./pages/AccountsPage";
+import { MaintenancePage } from "./pages/MaintenancePage";
 
 // Statistics pulls in recharts (~340 kB); load it only when the tab is opened.
 const StatisticsPage = lazy(() =>
@@ -124,6 +125,7 @@ export default function App() {
           {tab === "games" && <GamesPage summary={summary} />}
           {tab === "activity" && <ActivityPage />}
           {tab === "accounts" && <AccountsPage />}
+          {tab === "maintenance" && <MaintenancePage />}
           {tab === "statistics" && (
             <Suspense fallback={<div className="py-16 text-center text-muted">Loading…</div>}>
               <StatisticsPage />
