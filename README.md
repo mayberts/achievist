@@ -144,7 +144,14 @@ pip install -r requirements-dev.txt
 pytest
 ```
 
-Tests cover pure parsing/auth helpers and the platform-registry contract (every platform's connect schema is well-formed) — they don't require a running Postgres.
+Most tests cover pure parsing/auth helpers, the platform-registry contract, and API routes that don't touch the database — they run with no setup. A smaller set of integration tests (account dedup, achievement-unlock detection, schema migrations) needs a real Postgres connection; those skip automatically if none is reachable. To run them locally, point `TEST_DATABASE_URL` at a throwaway database:
+
+```bash
+createdb pantheon_test   # or: docker run --rm -d -e POSTGRES_PASSWORD=postgres -p 5432:5432 postgres:16-alpine
+TEST_DATABASE_URL=postgresql://postgres:postgres@localhost:5432/pantheon_test pytest
+```
+
+CI runs these against a Postgres service container automatically.
 
 ### Frontend
 
