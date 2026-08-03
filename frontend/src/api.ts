@@ -6,6 +6,7 @@ import type {
   GameDetail,
   GamesResponse,
   PlatformSchema,
+  RecentUnlocksResponse,
   SgdbSearchResponse,
   Summary,
   SyncProgress,
@@ -99,4 +100,8 @@ export const api = {
     ),
   sgdbRefresh: (force: boolean) =>
     send<{ status: string }>(`/api/sgdb-refresh?force=${force}`, "POST"),
+
+  // Achievement-unlock notification feed
+  recentUnlocks: (since: string) =>
+    get<RecentUnlocksResponse>(`/api/unlocks/recent?since=${encodeURIComponent(since)}`),
 };

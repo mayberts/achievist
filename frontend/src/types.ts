@@ -119,6 +119,20 @@ export interface Activity {
   feed: ActivityFeedItem[];
 }
 
+export interface UnlockEvent {
+  unlocked_at: string;
+  game_name: string;
+  platform: string;
+  platform_game_id: number;
+  achievement_name: string | null;
+  icon_url: string | null;
+  points: number | null;
+}
+
+export interface RecentUnlocksResponse {
+  events: UnlockEvent[];
+}
+
 export interface BackupInfo {
   filename: string;
   size_bytes: number;

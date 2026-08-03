@@ -34,6 +34,36 @@ export default function App() {
       .catch(() => {});
   }, []);
 
+  // Poll for newly-unlocked achievements (from any sync, manual or scheduled)
+  // independent of whether a sync is actively running right now, so
+  // background scheduled syncs still surface a toast while the tab is open.
+  const UNLOCK_CURSOR_KEY = "pantheon.lastUnlockSeen";
+  const checkUnlocks = useCallback(async () => {
+    try {
+      // First time this ships (no stored cursor yet): start from "now" so we
+      // don't dump every historical unlock ever buffered as a toast flood.
+      if (!localStorage.getItem(UNLOCK_CURSOR_KEY)) {
+        localStorage.setItem(UNLOCK_CURSOR_KEY, new Date().toISOString());
+        return;
+      }
+      const since = localStorage.getItem(UNLOCK_CURSOR_KEY) ?? "";
+      const { events } = await api.recentUnlocks(since);
+      for (const e of events) {
+        toast.achievement({
+          name: e.achievement_name || "Achievement unlocked",
+          subtitle: e.game_name + (e.points ? ` · ${e.points} pts` : ""),
+          icon: e.icon_url,
+        });
+      }
+      if (events.length > 0) {
+        localStorage.setItem(UNLOCK_CURSOR_KEY, events[events.length - 1].unlocked_at);
+      }
+    } catch {
+      /* ignore */
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   useEffect(() => {
     loadSummary();
     loadAccountErrors();
@@ -57,6 +87,7 @@ export default function App() {
             } else if (Object.keys(p.platforms).length > 0) {
               toast.success("Sync complete");
             }
+            checkUnlocks();
           }
           wasRunning.current = false;
           loadSummary();
@@ -69,7 +100,19 @@ export default function App() {
     tick();
     return () => window.clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loadSummary, loadAccountErrors]);
+  }, [loadSummary, loadAccountErrors, checkUnlocks]);
+
+  // background poll, so scheduled syncs (not just manually-triggered ones)
+  // also surface a toast while the tab is open
+  useEffect(() => {
+    let timer: number | undefined;
+    const tick = async () => {
+      await checkUnlocks();
+      timer = window.setTimeout(tick, 45000);
+    };
+    timer = window.setTimeout(tick, 45000);
+    return () => window.clearTimeout(timer);
+  }, [checkUnlocks]);
 
   const running = progress?.running ?? false;
 

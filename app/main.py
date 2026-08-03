@@ -27,6 +27,27 @@ _sync_progress: dict = {
     "platforms": {},  # platform -> {status, games_seen, achievements_synced, error}
 }
 
+# In-memory feed of newly-unlocked achievements, for the frontend to poll and
+# toast. Capped ring buffer — losing old entries on restart is fine, this is
+# just a live notification feed, not a record of truth (that's user_achievements).
+_UNLOCK_EVENTS_MAX = 300
+_unlock_events: list[dict] = []
+
+
+def _record_unlock_events(rows: list[dict]) -> None:
+    for r in rows:
+        _unlock_events.append({
+            "unlocked_at": r["unlocked_at"].isoformat(),
+            "game_name": r["game_name"],
+            "platform": r["platform"],
+            "platform_game_id": r["platform_game_id"],
+            "achievement_name": r["achievement_name"],
+            "icon_url": r["icon_url"],
+            "points": r["points"],
+        })
+    if len(_unlock_events) > _UNLOCK_EVENTS_MAX:
+        del _unlock_events[: len(_unlock_events) - _UNLOCK_EVENTS_MAX]
+
 
 async def _enrich_igdb(retry_failed: bool = False) -> None:
     """Fetch IGDB cover art for games that don't have it yet (parallel with semaphore)."""
@@ -293,6 +314,16 @@ async def _sync_one_account(pool, account: dict) -> None:
                     "UPDATE sync_runs SET finished_at = now(), status = 'ok' WHERE id = %s",
                     (run_id,),
                 )
+            # Only look for "new" unlocks if this account has synced
+            # successfully before — on a brand-new account's first sync,
+            # everything just synced in is historical backlog, not new.
+            prev_synced_at = account.get("last_synced_at")
+            if account.get("id") and prev_synced_at:
+                try:
+                    new_rows = await db.unlocks_since(conn, account["id"], prev_synced_at)
+                    _record_unlock_events(new_rows)
+                except Exception:
+                    log.exception("Failed to collect new-unlock events for %s", plat)
             if account.get("id"):
                 await db.set_account_status(conn, account["id"], "connected")
             _sync_progress["platforms"][plat]["status"] = "done"
@@ -1141,6 +1172,19 @@ async def sgdb_set(platform_game_id: int, url: str):
 @app.get("/api/sync/progress")
 async def sync_progress():
     return _sync_progress
+
+
+@app.get("/api/unlocks/recent")
+async def recent_unlocks(since: str = ""):
+    """
+    Achievement-unlock events collected during syncs, for the frontend to
+    poll and toast. Pass `since` back as the `unlocked_at` of the last event
+    you've already shown; omit it to get the most recent handful.
+    """
+    events = _unlock_events
+    if since:
+        events = [e for e in events if e["unlocked_at"] > since]
+    return {"events": events[-15:]}
 
 
 @app.post("/api/sync", status_code=202)
