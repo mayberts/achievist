@@ -9,7 +9,7 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from app import backup, config, db
+from app import backup, config, db, hltb as hltb_names
 from app.db import _fetch, _fetchrow
 from app.platforms import PLATFORMS
 
@@ -159,9 +159,10 @@ async def _enrich_hltb() -> None:
     async def _lookup(row):
         async with sem:
             try:
-                results = await hltb.async_search(row["name"])
+                query = hltb_names.clean_name(row["name"])
+                results = await hltb.async_search(query)
                 if not results:
-                    log.info("HLTB no results for: %s", row["name"])
+                    log.info("HLTB no results for: %s (searched: %s)", row["name"], query)
                     async with pool.connection() as conn:
                         await db.update_hltb(conn, row["id"], -1, None, None)
                     return
@@ -950,13 +951,15 @@ async def hltb_test(name: str = Query(...)):
         from howlongtobeatpy import HowLongToBeat
     except ImportError:
         return {"error": "howlongtobeatpy not installed"}
+    query = hltb_names.clean_name(name)
     try:
-        results = await HowLongToBeat(0.0).async_search(name)
+        results = await HowLongToBeat(0.0).async_search(query)
         if not results:
-            return {"error": "no results", "name": name}
+            return {"error": "no results", "name": name, "searched": query}
         best = max(results, key=lambda r: r.similarity)
         return {
-            "query": name,
+            "name": name,
+            "searched": query,
             "matched": best.game_name,
             "similarity": best.similarity,
             "main_story": best.main_story,

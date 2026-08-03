@@ -100,6 +100,7 @@ export const api = {
     ),
   sgdbRefresh: (force: boolean) =>
     send<{ status: string }>(`/api/sgdb-refresh?force=${force}`, "POST"),
+  hltbRefresh: () => send<{ status: string }>("/api/hltb-refresh", "POST"),
 
   // Achievement-unlock notification feed
   recentUnlocks: (since: string) =>
