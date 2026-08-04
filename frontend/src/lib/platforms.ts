@@ -59,6 +59,11 @@ export const PLATFORM_META: Record<string, PlatformMeta> = {
     badge: "bg-[#01875f]/20 text-[#01875f] border-[#01875f]",
     dot: "#01875f",
   },
+  gog: {
+    label: "GOG",
+    badge: "bg-[#5a1f8a]/20 text-[#a855f7] border-[#a855f7]",
+    dot: "#a855f7",
+  },
 };
 
 export function platformLabel(platform: string): string {

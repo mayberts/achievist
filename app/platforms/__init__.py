@@ -8,6 +8,7 @@ from app.platforms.epic import EpicPlatform
 from app.platforms.psn import PSNPlatform
 from app.platforms.ea import EAPlatform
 from app.platforms.googleplay import GooglePlayPlatform
+from app.platforms.gog import GOGPlatform
 
 PLATFORMS = {
     "steam": SteamPlatform,
@@ -20,4 +21,5 @@ PLATFORMS = {
     "psn": PSNPlatform,
     "ea": EAPlatform,
     "googleplay": GooglePlayPlatform,
+    "gog": GOGPlatform,
 }
