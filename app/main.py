@@ -1075,6 +1075,51 @@ async def hltb_test(name: str = Query(...)):
         return {"error": str(e)}
 
 
+@app.get("/api/exophase-origin-debug")
+async def exophase_origin_debug(game_id: int | None = Query(None), player_id: int | None = Query(None)):
+    """
+    Temporary diagnostic: dumps Exophase's raw public API response for the
+    "origin" (EA) environment, using the already-configured Exophase session
+    (EXOPHASE_PLAYER_ID/EXOPHASE_ACCESS_TOKEN — the same ones the Xbox 360
+    icon-enrichment feature uses). This is a much steadier foundation for EA
+    achievement data than EA's own unofficial API: Exophase has already done
+    that reverse-engineering, and exposes it through a public per-player API
+    keyed by our own Exophase login rather than a fragile EA access token.
+
+    With no params: dumps the raw games list for environment=origin.
+    With ?game_id=&player_id=: dumps the raw "earned achievements" response
+    for that game (player_id here is Exophase's per-game master_playerid,
+    found in the games-list dump, not our own EXOPHASE_PLAYER_ID).
+    """
+    from app.platforms.exophase import _API, _BASE_HEADERS
+
+    if not config.EXOPHASE_PLAYER_ID or not config.EXOPHASE_ACCESS_TOKEN:
+        return {"error": "EXOPHASE_PLAYER_ID / EXOPHASE_ACCESS_TOKEN not configured."}
+
+    headers = dict(_BASE_HEADERS)
+    headers["Cookie"] = f"ACCESS_TOKEN={config.EXOPHASE_ACCESS_TOKEN}"
+
+    async with httpx.AsyncClient(timeout=30) as client:
+        if game_id and player_id:
+            r = await client.get(
+                f"{_API}/public/player/{player_id}/game/{game_id}/earned",
+                params={"last": 9999999999999},
+                headers=headers,
+            )
+        else:
+            r = await client.get(
+                f"{_API}/public/player/{config.EXOPHASE_PLAYER_ID}/games",
+                params={"page": 1, "environment": "origin", "sort": 1, "showHidden": 0, "query": ""},
+                headers=headers,
+            )
+        result = {"status_code": r.status_code}
+        try:
+            result["body"] = r.json()
+        except Exception:
+            result["body_text"] = r.text[:2000]
+        return result
+
+
 @app.get("/api/ea-debug")
 async def ea_debug(type: str | None = Query(None)):
     """
