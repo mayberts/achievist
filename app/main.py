@@ -589,6 +589,14 @@ async def leaderboard(user: dict = Depends(require_user)):
     return {"entries": rows, "you_share": user["share_stats"]}
 
 
+@app.get("/api/leaderboard/games")
+async def leaderboard_games(user: dict = Depends(require_user)):
+    pool = await db.get_pool()
+    async with pool.connection() as conn:
+        rows = await db.get_shared_games(conn, user["id"])
+    return {"games": rows, "you_share": user["share_stats"]}
+
+
 @app.get("/api/summary")
 async def summary(user: dict = Depends(require_user)):
     pool = await db.get_pool()

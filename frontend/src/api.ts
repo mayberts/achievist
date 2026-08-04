@@ -10,6 +10,7 @@ import type {
   LeaderboardResponse,
   PlatformSchema,
   Profile,
+  SharedGamesResponse,
   RecentUnlocksResponse,
   SgdbSearchResponse,
   Summary,
@@ -97,6 +98,7 @@ export const api = {
   updateProfile: (p: Profile) => send<Profile>("/api/profile", "PUT", p),
 
   leaderboard: () => get<LeaderboardResponse>("/api/leaderboard"),
+  sharedGames: () => get<SharedGamesResponse>("/api/leaderboard/games"),
 
   games: (q: GamesQuery) => {
     const params = new URLSearchParams();
