@@ -49,6 +49,11 @@ export const PLATFORM_META: Record<string, PlatformMeta> = {
     badge: "bg-[#00184a] text-[#66c0f4] border-[#003791]",
     dot: "#66c0f4",
   },
+  ea: {
+    label: "EA App",
+    badge: "bg-[#0a0a0a] text-[#ff4747] border-[#ff4747]",
+    dot: "#ff4747",
+  },
 };
 
 export function platformLabel(platform: string): string {

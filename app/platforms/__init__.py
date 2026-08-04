@@ -6,6 +6,7 @@ from app.platforms.guildwars2 import GuildWars2Platform
 from app.platforms.ubisoft import UbisoftPlatform
 from app.platforms.epic import EpicPlatform
 from app.platforms.psn import PSNPlatform
+from app.platforms.ea import EAPlatform
 
 PLATFORMS = {
     "steam": SteamPlatform,
@@ -16,4 +17,5 @@ PLATFORMS = {
     "ubisoft": UbisoftPlatform,
     "epic": EpicPlatform,
     "psn": PSNPlatform,
+    "ea": EAPlatform,
 }
