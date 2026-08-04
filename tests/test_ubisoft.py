@@ -35,10 +35,17 @@ async def test_sync_upserts_games_and_achievements(monkeypatch, db_conn):
             "exo_slug": "far-cry-6-uplay", "page_type": "challenges",
         }]
 
-    async def fake_icons(exo_slug, page_type="achievements"):
+    async def fake_awards(exo_slug, page_type="achievements"):
         assert exo_slug == "far-cry-6-uplay"
         assert page_type == "challenges"  # Ubisoft's page path differs from EA's
-        return {"first-blood": "https://cdn/a.png", "well-armed": "https://cdn/b.png"}
+        return [
+            {"slug": "first-blood", "name": "First Blood", "description": "d1",
+             "icon": "https://cdn/a.png", "points": "10", "rarity_pct": "12.0", "locked": False},
+            {"slug": "well-armed", "name": "Well Armed", "description": "d2",
+             "icon": "https://cdn/b.png", "points": "20", "rarity_pct": "8.0", "locked": False},
+            {"slug": "untouchable", "name": "Untouchable", "description": "d3",
+             "icon": "https://cdn/c.png", "points": "30", "rarity_pct": "1.0", "locked": True},
+        ]
 
     async def fake_earned(master_playerid, game_id):
         assert (master_playerid, game_id) == (999, 1)
@@ -48,7 +55,7 @@ async def test_sync_upserts_games_and_achievements(monkeypatch, db_conn):
         }
 
     monkeypatch.setattr(exophase_module, "fetch_environment_games", fake_games)
-    monkeypatch.setattr(exophase_module, "fetch_game_page_icons", fake_icons)
+    monkeypatch.setattr(exophase_module, "fetch_game_page_awards", fake_awards)
     monkeypatch.setattr(exophase_module, "fetch_earned", fake_earned)
 
     await UbisoftPlatform().sync({"external_id": "ubisoft"}, db_conn)
