@@ -101,14 +101,16 @@ async def get_user_by_id(conn, user_id: int) -> dict | None:
 async def list_users(conn) -> list[dict]:
     return await _fetch(
         conn,
-        "SELECT id, username, display_name, avatar_url, is_admin, created_at FROM users ORDER BY id",
+        "SELECT id, username, display_name, avatar_url, is_admin, share_stats, created_at FROM users ORDER BY id",
     )
 
 
-async def update_user_profile(conn, user_id: int, display_name: str | None, avatar_url: str | None) -> None:
+async def update_user_profile(
+    conn, user_id: int, display_name: str | None, avatar_url: str | None, share_stats: bool,
+) -> None:
     await conn.execute(
-        "UPDATE users SET display_name = %s, avatar_url = %s WHERE id = %s",
-        (display_name, avatar_url, user_id),
+        "UPDATE users SET display_name = %s, avatar_url = %s, share_stats = %s WHERE id = %s",
+        (display_name, avatar_url, share_stats, user_id),
     )
 
 
@@ -118,6 +120,69 @@ async def update_user_password(conn, user_id: int, password_hash: str) -> None:
 
 async def delete_user(conn, user_id: int) -> None:
     await conn.execute("DELETE FROM users WHERE id = %s", (user_id,))
+
+
+# Points-per-rarity-tier for "Achievist Points" — a platform-agnostic score
+# so the leaderboard isn't just whoever plays the platform with the
+# biggest native point scale (Gamerscore vs. RA points vs. none at all for
+# Steam). Tier boundaries mirror frontend/src/lib/rarity.ts exactly.
+async def get_leaderboard(conn, requesting_user_id: int) -> list[dict]:
+    """
+    Achievist Points + raw stats per user who has opted in via
+    users.share_stats — plus the requesting user themself even if they
+    haven't opted in, so they can always see their own row.
+    """
+    return await _fetch(
+        conn,
+        """
+        WITH ach_stats AS (
+            SELECT
+                la.user_id,
+                COUNT(*) AS achievements_unlocked,
+                SUM(
+                    CASE
+                        WHEN a.rarity_pct IS NULL  THEN 15
+                        WHEN a.rarity_pct <= 1     THEN 200
+                        WHEN a.rarity_pct <= 5     THEN 100
+                        WHEN a.rarity_pct <= 20    THEN 50
+                        WHEN a.rarity_pct <= 50    THEN 25
+                        ELSE 10
+                    END
+                ) AS achievist_points
+            FROM user_achievements ua
+            JOIN linked_accounts la ON la.id = ua.linked_account_id
+            JOIN achievements a ON a.id = ua.achievement_id
+            WHERE ua.unlocked = true
+            GROUP BY la.user_id
+        ),
+        game_stats AS (
+            SELECT
+                la.user_id,
+                COUNT(DISTINCT ug.platform_game_id) AS games_played,
+                COUNT(DISTINCT ug.platform_game_id) FILTER (
+                    WHERE ug.total_achievements > 0 AND ug.completion_pct >= 100
+                ) AS games_completed
+            FROM user_games ug
+            JOIN linked_accounts la ON la.id = ug.linked_account_id
+            GROUP BY la.user_id
+        )
+        SELECT
+            u.id AS user_id,
+            u.username,
+            u.display_name,
+            u.avatar_url,
+            COALESCE(ach.achievist_points, 0) AS achievist_points,
+            COALESCE(ach.achievements_unlocked, 0) AS achievements_unlocked,
+            COALESCE(g.games_played, 0) AS games_played,
+            COALESCE(g.games_completed, 0) AS games_completed
+        FROM users u
+        LEFT JOIN ach_stats ach ON ach.user_id = u.id
+        LEFT JOIN game_stats g ON g.user_id = u.id
+        WHERE u.share_stats = true OR u.id = %s
+        ORDER BY achievist_points DESC
+        """,
+        requesting_user_id,
+    )
 
 
 async def create_session(conn, token: str, user_id: int, expires_at) -> None:
@@ -130,7 +195,7 @@ async def create_session(conn, token: str, user_id: int, expires_at) -> None:
 async def get_session_user(conn, token: str) -> dict | None:
     return await _fetchrow(
         conn,
-        "SELECT u.id, u.username, u.display_name, u.avatar_url, u.is_admin "
+        "SELECT u.id, u.username, u.display_name, u.avatar_url, u.is_admin, u.share_stats "
         "FROM sessions s JOIN users u ON u.id = s.user_id "
         "WHERE s.token = %s AND s.expires_at > now()",
         token,
