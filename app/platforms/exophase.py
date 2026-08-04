@@ -161,10 +161,16 @@ async def fetch_earned(master_playerid: int, game_id: int) -> dict[str, dict]:
                 break
 
             for item in items:
-                slug = item.get("slug")
+                # "slug" collides for secret/hidden achievements — EA has
+                # several distinct ones all literally named "hidden-achievement"
+                # in the public API, which silently overwrote each other when
+                # used as the dict key. The id-prefixed segment of "endpoint"
+                # (e.g. "2840-hidden-achievement") is the actual unique id, and
+                # matches what the page scraper's href-derived key uses.
+                key = _id_segment(item.get("endpoint")) or item.get("slug")
                 icon_path = (item.get("icons") or {}).get("m") or (item.get("icons") or {}).get("s")
-                if slug:
-                    earned[slug] = {
+                if key:
+                    earned[key] = {
                         "timestamp": item.get("timestamp"),
                         "icon": f"{_IMG_BASE}{icon_path}" if icon_path else None,
                     }
@@ -204,7 +210,19 @@ async def fetch_game_page_icons(exo_slug: str, page_type: str = "achievements") 
     return icons
 
 
-_HREF_ID_PREFIX_RE = re.compile(r"^\d+-(.+)$")
+def _id_segment(path: str | None) -> str | None:
+    """
+    Last path segment of an achievement URL/endpoint, e.g.
+    '/achievement/battlefield-1-origin/108-operations' -> '108-operations'.
+    Kept with its numeric id prefix intact (not stripped) — it's the only
+    part guaranteed unique, since the human-readable slug/name collides for
+    secret achievements (several distinct ones are all literally named
+    "hidden-achievement" in EA's public data).
+    """
+    if not path:
+        return None
+    seg = path.rstrip("/").rsplit("/", 1)[-1]
+    return seg or None
 
 
 class _AwardsPageParser(HTMLParser):
@@ -261,9 +279,9 @@ class _AwardsPageParser(HTMLParser):
         elif tag == "img" and "award-image" in classes:
             self._cur["icon"] = d.get("src")
         elif tag == "a" and self._title_depth is not None:
-            m = _HREF_ID_PREFIX_RE.match((d.get("href") or "").rstrip("/").rsplit("/", 1)[-1])
-            if m:
-                self._cur["slug"] = m.group(1)
+            seg = _id_segment(d.get("href"))
+            if seg:
+                self._cur["slug"] = seg
 
     def handle_endtag(self, tag):
         if tag == "div" and self._cur is not None:

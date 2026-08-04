@@ -70,7 +70,7 @@ def test_parser_handles_unescaped_html_in_tooltip():
     assert len(parser.awards) == 2
 
     unlocked, locked = parser.awards
-    assert unlocked["slug"] == "operations"
+    assert unlocked["slug"] == "108-operations"
     assert unlocked["name"] == "Operations"
     assert unlocked["description"] == "Win 1 round of Operations in multiplayer"
     assert unlocked["icon"].endswith("7ded638.png?1512fe2f5620d9c668081c8183195733")
@@ -78,7 +78,7 @@ def test_parser_handles_unescaped_html_in_tooltip():
     assert unlocked["rarity_pct"] == "50.95"
     assert unlocked["locked"] is False
 
-    assert locked["slug"] == "decorated"
+    assert locked["slug"] == "95-decorated"
     assert locked["name"] == "Decorated"
     assert locked["description"] == "Reach Rank 1 with all 4 Infantry classes in multiplayer"
     assert locked["locked"] is True
@@ -93,7 +93,36 @@ async def test_fetch_game_page_awards_end_to_end(monkeypatch):
         httpx, "AsyncClient", lambda **kw: real_async_client(transport=httpx.MockTransport(handler), **kw)
     )
     awards = await exophase_module.fetch_game_page_awards("battlefield-1-origin")
-    assert {a["slug"] for a in awards} == {"operations", "decorated"}
+    assert {a["slug"] for a in awards} == {"108-operations", "95-decorated"}
+
+
+async def test_fetch_earned_does_not_collide_on_shared_slug(monkeypatch):
+    """
+    Real bug: EA has several distinct secret achievements all literally
+    named/slugged "hidden-achievement" — keying the earned dict by "slug"
+    silently overwrote all but one. Must key by the unique id-prefixed
+    "endpoint" segment instead.
+    """
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={
+            "success": True,
+            "master_gameid": "1",
+            "list": [
+                {"masterAwardId": 1, "slug": "hidden-achievement", "timestamp": 100,
+                 "endpoint": "/achievement/some-game-origin/2840-hidden-achievement",
+                 "icons": {"m": "/a.png"}},
+                {"masterAwardId": 2, "slug": "hidden-achievement", "timestamp": 90,
+                 "endpoint": "/achievement/some-game-origin/2844-hidden-achievement",
+                 "icons": {"m": "/b.png"}},
+            ],
+        })
+
+    real_async_client = httpx.AsyncClient
+    monkeypatch.setattr(
+        httpx, "AsyncClient", lambda **kw: real_async_client(transport=httpx.MockTransport(handler), **kw)
+    )
+    earned = await exophase_module.fetch_earned(999, 1)
+    assert set(earned) == {"2840-hidden-achievement", "2844-hidden-achievement"}
 
 
 @pytest.mark.parametrize("val,expected", [("10", 10), ("10.0", 10), (None, None), ("garbage", None)])
