@@ -7,6 +7,7 @@ from app.platforms.ubisoft import UbisoftPlatform
 from app.platforms.epic import EpicPlatform
 from app.platforms.psn import PSNPlatform
 from app.platforms.ea import EAPlatform
+from app.platforms.googleplay import GooglePlayPlatform
 
 PLATFORMS = {
     "steam": SteamPlatform,
@@ -18,4 +19,5 @@ PLATFORMS = {
     "epic": EpicPlatform,
     "psn": PSNPlatform,
     "ea": EAPlatform,
+    "googleplay": GooglePlayPlatform,
 }

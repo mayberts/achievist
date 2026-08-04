@@ -54,6 +54,11 @@ export const PLATFORM_META: Record<string, PlatformMeta> = {
     badge: "bg-[#0a0a0a] text-[#ff4747] border-[#ff4747]",
     dot: "#ff4747",
   },
+  googleplay: {
+    label: "Google Play",
+    badge: "bg-[#01875f]/20 text-[#01875f] border-[#01875f]",
+    dot: "#01875f",
+  },
 };
 
 export function platformLabel(platform: string): string {
