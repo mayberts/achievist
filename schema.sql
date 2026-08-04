@@ -38,25 +38,37 @@ ALTER TABLE linked_accounts ADD COLUMN IF NOT EXISTS credentials JSONB NOT NULL 
 ALTER TABLE linked_accounts ADD COLUMN IF NOT EXISTS status      TEXT DEFAULT 'connected';
 ALTER TABLE linked_accounts ADD COLUMN IF NOT EXISTS last_error  TEXT;
 
--- Multi-user (in progress — see app/main.py's Auth section docstring):
--- each linked account will belong to exactly one user rather than being
--- shared globally. The column is added now, nullable and unused by any
--- query yet, so this migration is safe to ship independently. The
--- (platform, external_id) unique constraint above is deliberately left
--- alone for now: swapping it to (user_id, platform, external_id) has to
--- land together with the db.py call-site changes that supply a real
--- user_id (upsert_linked_account/upsert_account's ON CONFLICT targets),
--- not before — doing it here would break every existing "connect account"
--- call immediately, since ON CONFLICT must match a real constraint.
+-- Multi-user: each linked account belongs to exactly one user, not shared
+-- globally. Nullable at the DB level — on an upgrade, existing rows get
+-- backfilled by app.db.migrate_single_user_to_admin() right after this
+-- schema is applied, not here (that needs real password hashing, which
+-- belongs in Python, not SQL).
 ALTER TABLE linked_accounts ADD COLUMN IF NOT EXISTS user_id INT REFERENCES users(id) ON DELETE CASCADE;
 
--- This app supports one account per platform, but the (platform, external_id)
--- unique constraint above didn't prevent orphaned duplicates from piling up
--- when a reconnect resolved to a different external_id. Keep only the most
--- recently created row per platform.
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'linked_accounts_user_platform_external_id_key'
+    ) THEN
+        ALTER TABLE linked_accounts DROP CONSTRAINT IF EXISTS linked_accounts_platform_external_id_key;
+        ALTER TABLE linked_accounts ADD CONSTRAINT linked_accounts_user_platform_external_id_key
+            UNIQUE (user_id, platform, external_id);
+    END IF;
+END $$;
+
+-- This app supports one account per platform per user, but the unique
+-- constraint above didn't prevent orphaned duplicates from piling up when a
+-- reconnect resolved to a different external_id. Keep only the most
+-- recently created row per (user, platform). Scoped by user_id (via
+-- IS NOT DISTINCT FROM, so NULL groups with NULL pre-migration, matching
+-- old single-user behavior on the very first boot after upgrading, before
+-- the Python migration backfills real ids) so this can't delete one user's
+-- account while deduping another's.
 DELETE FROM linked_accounts a
 USING linked_accounts b
-WHERE a.platform = b.platform AND a.id < b.id;
+WHERE a.platform = b.platform
+  AND a.user_id IS NOT DISTINCT FROM b.user_id
+  AND a.id < b.id;
 
 CREATE TABLE IF NOT EXISTS igdb_games (
     id                  BIGINT PRIMARY KEY,  -- IGDB id

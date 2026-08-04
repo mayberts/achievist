@@ -31,7 +31,7 @@ class PSNPlatform(Platform):
         access_token = await get_access_token()
         headers = auth_headers(access_token)
 
-        linked_id = await db.upsert_linked_account(conn, "psn", online_id)
+        linked_id = await db.upsert_linked_account(conn, account["user_id"], "psn", online_id)
         earned_cache = await db.get_earned_counts(conn, linked_id)
 
         async with httpx.AsyncClient(timeout=30) as client:

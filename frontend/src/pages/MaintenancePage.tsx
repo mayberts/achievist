@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
-import { DatabaseBackup, Download, Clock, ImageDown, Trash2 } from "lucide-react";
+import { DatabaseBackup, Download, Clock, ImageDown, Trash2, UserPlus, Users } from "lucide-react";
 import { api } from "../api";
-import type { BackupInfo } from "../types";
+import type { BackupInfo, User } from "../types";
 import { fmtBytes, fmtRelative } from "../lib/format";
 import { useToast } from "../components/Toast";
 
-export function MaintenancePage() {
+export function MaintenancePage({ isAdmin }: { isAdmin: boolean }) {
   return (
     <div>
       <div className="mb-2 text-lg font-semibold text-slate-100">Maintenance</div>
@@ -13,9 +13,127 @@ export function MaintenancePage() {
         App-wide background jobs: database backups and enrichment (cover art, time-to-beat).
       </p>
 
+      {isAdmin && <FamilySection />}
       <CoversSection />
       <HltbSection />
-      <BackupsSection />
+      {isAdmin && <BackupsSection />}
+    </div>
+  );
+}
+
+function FamilySection() {
+  const [users, setUsers] = useState<User[] | null>(null);
+  const [creating, setCreating] = useState(false);
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [displayName, setDisplayName] = useState("");
+  const toast = useToast();
+
+  async function refresh() {
+    setUsers(await api.users());
+  }
+
+  useEffect(() => {
+    refresh();
+  }, []);
+
+  async function addUser(e: React.FormEvent) {
+    e.preventDefault();
+    setCreating(true);
+    try {
+      await api.createUser({
+        username: username.trim(),
+        password,
+        display_name: displayName.trim() || undefined,
+      });
+      toast.success(`${username} can now log in`);
+      setUsername("");
+      setPassword("");
+      setDisplayName("");
+      await refresh();
+    } catch (err) {
+      toast.error(String(err instanceof Error ? err.message : err));
+    } finally {
+      setCreating(false);
+    }
+  }
+
+  async function remove(u: User) {
+    if (!confirm(`Delete ${u.username}'s account? Their games, achievements, and connected accounts go with it.`)) return;
+    try {
+      await api.deleteUser(u.id);
+      toast.success(`${u.username} deleted`);
+      refresh();
+    } catch (err) {
+      toast.error(String(err instanceof Error ? err.message : err));
+    }
+  }
+
+  return (
+    <div className="mb-8">
+      <div className="mb-2 text-base font-semibold text-slate-100">Family Accounts</div>
+      <p className="mb-3 text-sm text-muted">
+        Each person gets their own login and their own separate library — accounts they connect
+        aren't shared with anyone else.
+      </p>
+
+      <div className="rounded-card border border-line bg-ink-850 p-4">
+        <div className="mb-4 space-y-2">
+          {users === null ? (
+            <div className="text-sm text-faint">Loading…</div>
+          ) : (
+            users.map((u) => (
+              <div key={u.id} className="flex items-center justify-between gap-3 rounded-lg bg-ink-900/50 px-3 py-2">
+                <div className="flex min-w-0 items-center gap-2">
+                  <Users size={14} className="flex-shrink-0 text-faint" />
+                  <span className="truncate text-sm text-slate-200">{u.display_name || u.username}</span>
+                  {u.is_admin && (
+                    <span className="rounded-md bg-accent/20 px-1.5 py-0.5 text-[10px] font-semibold text-accent">
+                      Admin
+                    </span>
+                  )}
+                </div>
+                <button
+                  onClick={() => remove(u)}
+                  className="inline-flex flex-shrink-0 items-center rounded-lg border border-line bg-ink-800 px-2 py-1 text-xs text-red-400 transition hover:bg-red-950/40"
+                >
+                  <Trash2 size={12} />
+                </button>
+              </div>
+            ))
+          )}
+        </div>
+
+        <form onSubmit={addUser} className="grid gap-2 sm:grid-cols-3">
+          <input
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            placeholder="Username"
+            className="rounded-lg border border-line bg-ink-900 px-3 py-2 text-sm text-slate-100 outline-none placeholder:text-faint focus:border-accent-soft"
+          />
+          <input
+            value={displayName}
+            onChange={(e) => setDisplayName(e.target.value)}
+            placeholder="Display name (optional)"
+            className="rounded-lg border border-line bg-ink-900 px-3 py-2 text-sm text-slate-100 outline-none placeholder:text-faint focus:border-accent-soft"
+          />
+          <input
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="Password (8+ characters)"
+            className="rounded-lg border border-line bg-ink-900 px-3 py-2 text-sm text-slate-100 outline-none placeholder:text-faint focus:border-accent-soft"
+          />
+          <button
+            type="submit"
+            disabled={creating || !username.trim() || password.length < 8}
+            className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-accent px-3 py-2 text-sm font-semibold text-white transition hover:bg-accent/90 disabled:opacity-50 sm:col-span-3"
+          >
+            <UserPlus size={15} />
+            {creating ? "Creating…" : "Add family member"}
+          </button>
+        </form>
+      </div>
     </div>
   );
 }

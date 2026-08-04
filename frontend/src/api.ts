@@ -3,6 +3,7 @@ import type {
   Achievement,
   AchievementSearchResponse,
   Activity,
+  AuthStatus,
   BackupsResponse,
   GameDetail,
   GamesResponse,
@@ -12,11 +13,28 @@ import type {
   SgdbSearchResponse,
   Summary,
   SyncProgress,
+  User,
 } from "./types";
+
+// Session cookie expiring mid-use (or never having been set) surfaces as a
+// 401 from any endpoint. Rather than have every page handle that specially,
+// AuthGate registers a handler here once that bounces back to the login
+// screen — /api/auth/* calls themselves are exempt, since a wrong password
+// legitimately 401s and shouldn't trigger a "session expired" bounce.
+let unauthorizedHandler: (() => void) | null = null;
+export function onUnauthorized(handler: () => void) {
+  unauthorizedHandler = handler;
+}
+function reportIfUnauthorized(url: string, status: number) {
+  if (status === 401 && !url.startsWith("/api/auth/")) unauthorizedHandler?.();
+}
 
 async function get<T>(url: string): Promise<T> {
   const r = await fetch(url);
-  if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
+  if (!r.ok) {
+    reportIfUnauthorized(url, r.status);
+    throw new Error(`${r.status} ${await r.text()}`);
+  }
   return r.json() as Promise<T>;
 }
 
@@ -27,6 +45,7 @@ async function send<T>(url: string, method: string, body?: unknown): Promise<T> 
     body: body ? JSON.stringify(body) : undefined,
   });
   if (!r.ok) {
+    reportIfUnauthorized(url, r.status);
     let detail = await r.text();
     try {
       detail = JSON.parse(detail).detail ?? detail;
@@ -59,6 +78,18 @@ export interface AchievementSearchQuery {
 }
 
 export const api = {
+  authStatus: () => get<AuthStatus>("/api/auth/status"),
+  authSetup: (username: string, password: string) =>
+    send<User>("/api/auth/setup", "POST", { username, password }),
+  login: (username: string, password: string) =>
+    send<User>("/api/auth/login", "POST", { username, password }),
+  logout: () => send<{ status: string }>("/api/auth/logout", "POST"),
+
+  users: () => get<User[]>("/api/users"),
+  createUser: (body: { username: string; password: string; display_name?: string; is_admin?: boolean }) =>
+    send<User>("/api/users", "POST", body),
+  deleteUser: (id: number) => send<void>(`/api/users/${id}`, "DELETE"),
+
   summary: () => get<Summary>("/api/summary"),
 
   profile: () => get<Profile>("/api/profile"),

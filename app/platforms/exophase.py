@@ -443,11 +443,11 @@ async def sync_environment(worker, conn, platform_key: str, environment: str, ac
         )
     delay = config.REQUEST_DELAY_SECONDS
 
-    linked_id = await db.upsert_linked_account(conn, platform_key, account["external_id"])
+    linked_id = await db.upsert_linked_account(conn, account["user_id"], platform_key, account["external_id"])
     # Collapse any stray duplicate row left behind by a previous, differently
     # keyed version of this platform (e.g. Ubisoft used to be keyed by the
     # user's real username; this always uses the fixed connect-time id).
-    await db.delete_other_accounts_for_platform(conn, platform_key, account["external_id"])
+    await db.delete_other_accounts_for_platform(conn, account["user_id"], platform_key, account["external_id"])
     earned_cache = await db.get_earned_counts(conn, linked_id)
 
     async with httpx.AsyncClient(timeout=30) as client:

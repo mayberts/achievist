@@ -28,7 +28,7 @@ class RetroAchievementsPlatform(Platform):
         delay = config.REQUEST_DELAY_SECONDS
         auth = {"z": ra_user, "y": key}
 
-        linked_id = await db.upsert_linked_account(conn, "retroachievements", username)
+        linked_id = await db.upsert_linked_account(conn, account["user_id"], "retroachievements", username)
         earned_cache = await db.get_earned_counts(conn, linked_id)
 
         async with httpx.AsyncClient(timeout=30) as client:
