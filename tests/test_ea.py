@@ -75,10 +75,10 @@ async def test_sync_upserts_games_and_achievements(monkeypatch, db_conn):
 
     _patch_client(monkeypatch, handler)
 
-    await EAPlatform().sync({"credentials": {"access_token": "tok"}}, db_conn)
+    await EAPlatform().sync({"credentials": {"access_token": "tok"}, "external_id": "ea"}, db_conn)
     await db_conn.commit()
 
-    linked_id = await db.upsert_linked_account(db_conn, "ea", "1")
+    linked_id = await db.upsert_linked_account(db_conn, "ea", "ea")
     row = await db._fetchrow(
         db_conn,
         "SELECT ug.earned_achievements, ug.total_achievements FROM user_games ug "
