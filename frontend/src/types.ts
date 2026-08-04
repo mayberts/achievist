@@ -31,6 +31,30 @@ export interface LeaderboardResponse {
   you_share: boolean;
 }
 
+export interface SharedGamePlayer {
+  user_id: number;
+  username: string;
+  display_name: string | null;
+  avatar_url: string | null;
+  earned: number;
+  total: number;
+  completion_pct: number;
+}
+
+export interface SharedGame {
+  platform_game_id: number;
+  platform: string;
+  name: string;
+  icon_url: string | null;
+  sgdb_cover_url: string | null;
+  players: SharedGamePlayer[];
+}
+
+export interface SharedGamesResponse {
+  games: SharedGame[];
+  you_share: boolean;
+}
+
 export interface User {
   id: number;
   username: string;

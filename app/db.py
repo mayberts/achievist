@@ -185,6 +185,64 @@ async def get_leaderboard(conn, requesting_user_id: int) -> list[dict]:
     )
 
 
+async def get_shared_games(conn, requesting_user_id: int) -> list[dict]:
+    """
+    Games owned by two or more "visible" users (opted-in via share_stats,
+    plus the requester themself), each with every visible owner's progress
+    on it — for a family "who's ahead on this one" comparison. Matched by
+    platform_game_id (same platform + same app id), not igdb_id, since
+    igdb_id isn't populated for every game and an exact platform-game match
+    is unambiguous; cross-platform copies of the same game (e.g. Steam vs.
+    Xbox) show as separate rows.
+    """
+    return await _fetch(
+        conn,
+        """
+        WITH visible AS (
+            SELECT id FROM users WHERE share_stats = true OR id = %s
+        ),
+        per_user_game AS (
+            SELECT
+                ug.platform_game_id,
+                la.user_id,
+                u.username,
+                u.display_name,
+                u.avatar_url,
+                ug.earned_achievements,
+                ug.total_achievements,
+                ug.completion_pct
+            FROM user_games ug
+            JOIN linked_accounts la ON la.id = ug.linked_account_id
+            JOIN visible v ON v.id = la.user_id
+            JOIN users u ON u.id = la.user_id
+        )
+        SELECT
+            pg.id AS platform_game_id,
+            pg.platform,
+            pg.name,
+            pg.icon_url,
+            pg.sgdb_cover_url,
+            json_agg(
+                json_build_object(
+                    'user_id', pug.user_id,
+                    'username', pug.username,
+                    'display_name', pug.display_name,
+                    'avatar_url', pug.avatar_url,
+                    'earned', pug.earned_achievements,
+                    'total', pug.total_achievements,
+                    'completion_pct', pug.completion_pct
+                ) ORDER BY pug.completion_pct DESC NULLS LAST
+            ) AS players
+        FROM per_user_game pug
+        JOIN platform_games pg ON pg.id = pug.platform_game_id
+        GROUP BY pg.id, pg.platform, pg.name, pg.icon_url, pg.sgdb_cover_url
+        HAVING COUNT(DISTINCT pug.user_id) >= 2
+        ORDER BY pg.name
+        """,
+        requesting_user_id,
+    )
+
+
 async def create_session(conn, token: str, user_id: int, expires_at) -> None:
     await conn.execute(
         "INSERT INTO sessions (token, user_id, expires_at) VALUES (%s, %s, %s)",

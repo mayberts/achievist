@@ -63,6 +63,43 @@ async def test_leaderboard_includes_opted_in_users(db_conn, client):
     assert entries["kid"]["achievements_unlocked"] == 5
 
 
+async def test_shared_games_only_include_games_two_visible_users_both_own(db_conn, client):
+    parent = await db.create_user(db_conn, "parent", auth.hash_password("parentpassword1"), is_admin=True)
+    kid = await db.create_user(db_conn, "kid", auth.hash_password("kidpassword1"), is_admin=False)
+    stranger = await db.create_user(db_conn, "stranger", auth.hash_password("strangerpassword1"), is_admin=False)
+    await db.update_user_profile(db_conn, kid["id"], None, None, True)
+    # parent and kid both own the same "steam"/"1" game (shared); stranger
+    # hasn't opted in, so their copy of it shouldn't pull them into the row.
+    await _seed_achievements(db_conn, parent["id"], "steam", "111", 2)
+    await _seed_achievements(db_conn, kid["id"], "steam", "222", 5)
+    await _seed_achievements(db_conn, stranger["id"], "steam", "333", 1)
+    await db_conn.commit()
+
+    await client.post("/api/auth/login", json={"username": "parent", "password": "parentpassword1"})
+    resp = await client.get("/api/leaderboard/games")
+    assert resp.status_code == 200
+    games = resp.json()["games"]
+    assert len(games) == 1
+    players = {p["username"]: p for p in games[0]["players"]}
+    assert set(players) == {"parent", "kid"}
+    assert players["kid"]["earned"] == 5
+    assert players["parent"]["earned"] == 2
+
+
+async def test_shared_games_empty_when_no_overlap(db_conn, client):
+    parent = await db.create_user(db_conn, "parent", auth.hash_password("parentpassword1"), is_admin=True)
+    kid = await db.create_user(db_conn, "kid", auth.hash_password("kidpassword1"), is_admin=False)
+    await db.update_user_profile(db_conn, kid["id"], None, None, True)
+    await _seed_achievements(db_conn, parent["id"], "steam", "111", 2)
+    await _seed_achievements(db_conn, kid["id"], "xbox", "222", 5)
+    await db_conn.commit()
+
+    await client.post("/api/auth/login", json={"username": "parent", "password": "parentpassword1"})
+    resp = await client.get("/api/leaderboard/games")
+    assert resp.status_code == 200
+    assert resp.json()["games"] == []
+
+
 async def test_share_stats_toggle_via_profile_endpoint(db_conn, client):
     await db.create_user(db_conn, "parent", auth.hash_password("parentpassword1"), is_admin=True)
     await db_conn.commit()
