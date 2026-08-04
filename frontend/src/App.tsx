@@ -12,6 +12,7 @@ import { GamesPage } from "./pages/GamesPage";
 import { AchievementsPage } from "./pages/AchievementsPage";
 import { ActivityPage } from "./pages/ActivityPage";
 import { AccountsPage } from "./pages/AccountsPage";
+import { LeaderboardPage } from "./pages/LeaderboardPage";
 import { MaintenancePage } from "./pages/MaintenancePage";
 import { GameDetailPage } from "./pages/GameDetailPage";
 
@@ -197,6 +198,7 @@ export default function App() {
                   {tab === "achievements" && <AchievementsPage />}
                   {tab === "activity" && <ActivityPage />}
                   {tab === "accounts" && <AccountsPage />}
+                  {tab === "leaderboard" && <LeaderboardPage />}
                   {tab === "maintenance" && <MaintenancePage isAdmin={user.is_admin} />}
                   {tab === "statistics" && (
                     <Suspense fallback={<div className="py-16 text-center text-muted">Loading…</div>}>

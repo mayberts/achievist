@@ -7,6 +7,7 @@ import type {
   BackupsResponse,
   GameDetail,
   GamesResponse,
+  LeaderboardResponse,
   PlatformSchema,
   Profile,
   RecentUnlocksResponse,
@@ -94,6 +95,8 @@ export const api = {
 
   profile: () => get<Profile>("/api/profile"),
   updateProfile: (p: Profile) => send<Profile>("/api/profile", "PUT", p),
+
+  leaderboard: () => get<LeaderboardResponse>("/api/leaderboard"),
 
   games: (q: GamesQuery) => {
     const params = new URLSearchParams();

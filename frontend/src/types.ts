@@ -12,6 +12,23 @@ export interface PlatformSummary {
 export interface Profile {
   display_name: string | null;
   avatar_url: string | null;
+  share_stats: boolean;
+}
+
+export interface LeaderboardEntry {
+  user_id: number;
+  username: string;
+  display_name: string | null;
+  avatar_url: string | null;
+  achievist_points: number;
+  achievements_unlocked: number;
+  games_played: number;
+  games_completed: number;
+}
+
+export interface LeaderboardResponse {
+  entries: LeaderboardEntry[];
+  you_share: boolean;
 }
 
 export interface User {

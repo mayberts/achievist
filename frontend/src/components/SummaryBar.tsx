@@ -22,7 +22,7 @@ export function SummaryBar({ summary }: { summary: Summary }) {
   useEffect(() => {
     api.profile()
       .then(setProfile)
-      .catch(() => setProfile({ display_name: null, avatar_url: null }));
+      .catch(() => setProfile({ display_name: null, avatar_url: null, share_stats: false }));
   }, []);
 
   const totalPlaytime = summary.by_platform.reduce(

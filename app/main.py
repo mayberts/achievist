@@ -563,17 +563,30 @@ async def delete_user_account(user_id: int, admin: dict = Depends(require_admin)
 
 @app.get("/api/profile")
 async def get_profile(user: dict = Depends(require_user)):
-    return {"display_name": user["display_name"], "avatar_url": user["avatar_url"]}
+    return {
+        "display_name": user["display_name"],
+        "avatar_url": user["avatar_url"],
+        "share_stats": user["share_stats"],
+    }
 
 
 @app.put("/api/profile")
 async def update_profile(payload: dict, user: dict = Depends(require_user)):
     display_name = (payload.get("display_name") or "").strip() or None
     avatar_url = (payload.get("avatar_url") or "").strip() or None
+    share_stats = bool(payload.get("share_stats"))
     pool = await db.get_pool()
     async with pool.connection() as conn:
-        await db.update_user_profile(conn, user["id"], display_name, avatar_url)
-    return {"display_name": display_name, "avatar_url": avatar_url}
+        await db.update_user_profile(conn, user["id"], display_name, avatar_url, share_stats)
+    return {"display_name": display_name, "avatar_url": avatar_url, "share_stats": share_stats}
+
+
+@app.get("/api/leaderboard")
+async def leaderboard(user: dict = Depends(require_user)):
+    pool = await db.get_pool()
+    async with pool.connection() as conn:
+        rows = await db.get_leaderboard(conn, user["id"])
+    return {"entries": rows, "you_share": user["share_stats"]}
 
 
 @app.get("/api/summary")

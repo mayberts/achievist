@@ -15,6 +15,7 @@ export function ProfileEditModal({
 }) {
   const [displayName, setDisplayName] = useState(profile.display_name ?? "");
   const [avatarUrl, setAvatarUrl] = useState(profile.avatar_url ?? "");
+  const [shareStats, setShareStats] = useState(profile.share_stats);
   const [saving, setSaving] = useState(false);
   const toast = useToast();
 
@@ -24,6 +25,7 @@ export function ProfileEditModal({
       const saved = await api.updateProfile({
         display_name: displayName.trim() || null,
         avatar_url: avatarUrl.trim() || null,
+        share_stats: shareStats,
       });
       toast.success("Profile updated");
       onSaved(saved);
@@ -82,6 +84,21 @@ export function ProfileEditModal({
               />
             )}
           </div>
+
+          <label className="flex items-start gap-2 rounded-lg border border-line bg-ink-900 px-3 py-2.5">
+            <input
+              type="checkbox"
+              checked={shareStats}
+              onChange={(e) => setShareStats(e.target.checked)}
+              className="mt-0.5 h-4 w-4 flex-shrink-0 accent-accent"
+            />
+            <span className="text-sm text-slate-200">
+              Compare achievements with family
+              <span className="mt-0.5 block text-xs text-muted">
+                Shows your Achievist Points and stats on the family Leaderboard.
+              </span>
+            </span>
+          </label>
 
           <button
             onClick={save}
