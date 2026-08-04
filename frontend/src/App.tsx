@@ -1,8 +1,9 @@
 import { useEffect, useState, useCallback, useRef, lazy, Suspense } from "react";
 import { Route, Routes, useNavigate } from "react-router-dom";
-import { RefreshCw, Trophy } from "lucide-react";
+import { LogOut, RefreshCw, Trophy } from "lucide-react";
 import { api } from "./api";
 import type { Summary, SyncProgress } from "./types";
+import { useAuth } from "./lib/auth";
 import { Nav, type Tab } from "./components/Nav";
 import { SummaryBar } from "./components/SummaryBar";
 import { BackToTop } from "./components/BackToTop";
@@ -27,6 +28,7 @@ export default function App() {
   const toast = useToast();
   const wasRunning = useRef(false);
   const navigate = useNavigate();
+  const { user, logout } = useAuth();
 
   const loadSummary = useCallback(() => {
     api.summary().then(setSummary).catch(() => setSummary(null));
@@ -136,9 +138,19 @@ export default function App() {
   return (
     <div className="min-h-screen">
       <div className="mx-auto max-w-6xl px-3 py-4 sm:px-4 sm:py-6">
-        <div className="mb-4 flex items-center gap-2">
-          <Trophy size={20} className="text-accent" />
-          <span className="text-lg font-bold tracking-tight text-slate-100">Achievist</span>
+        <div className="mb-4 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <Trophy size={20} className="text-accent" />
+            <span className="text-lg font-bold tracking-tight text-slate-100">Achievist</span>
+          </div>
+          <button
+            onClick={logout}
+            title={`Log out (${user.username})`}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-line/40 bg-ink-900/40 px-2.5 py-1.5 text-xs font-medium text-muted backdrop-blur-sm transition hover:bg-ink-800/60 hover:text-slate-200"
+          >
+            <LogOut size={13} />
+            {user.username}
+          </button>
         </div>
 
         {summary && <SummaryBar summary={summary} />}
@@ -185,7 +197,7 @@ export default function App() {
                   {tab === "achievements" && <AchievementsPage />}
                   {tab === "activity" && <ActivityPage />}
                   {tab === "accounts" && <AccountsPage />}
-                  {tab === "maintenance" && <MaintenancePage />}
+                  {tab === "maintenance" && <MaintenancePage isAdmin={user.is_admin} />}
                   {tab === "statistics" && (
                     <Suspense fallback={<div className="py-16 text-center text-muted">Loading…</div>}>
                       <StatisticsPage />
