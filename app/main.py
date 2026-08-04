@@ -1157,14 +1157,14 @@ async def exophase_match_debug(
 async def exophase_page_debug(exo_slug: str = Query(...), page_type: str = Query("achievements")):
     """
     Temporary diagnostic: fetches an Exophase game achievements/challenges
-    page and reports how many icons the scraper (fetch_game_page_icons)
-    finds, plus a raw HTML snippet — to check whether the page renders the
-    achievement grid as static HTML at all for a given environment (EA's
-    "achievements" pages appear not to, unlike Ubisoft's "challenges" ones).
+    page and reports what the real scraper (fetch_game_page_awards, the
+    HTML-parser-based one actually used by sync) finds, plus a raw HTML
+    snippet — to check whether the page renders the achievement grid as
+    static HTML at all for a given environment/game.
     """
-    from app.platforms.exophase import fetch_game_page_icons, _PAGE_HEADERS
+    from app.platforms.exophase import fetch_game_page_awards, _PAGE_HEADERS
 
-    icons = await fetch_game_page_icons(exo_slug, page_type)
+    awards = await fetch_game_page_awards(exo_slug, page_type)
 
     url = f"https://www.exophase.com/game/{exo_slug}/{page_type}/"
     async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
@@ -1183,8 +1183,8 @@ async def exophase_page_debug(exo_slug: str = Query(...), page_type: str = Query
     return {
         "url": url,
         "status_code": r.status_code,
-        "icons_found": len(icons),
-        "sample_icons": dict(list(icons.items())[:5]),
+        "awards_found": len(awards),
+        "sample_awards": awards[:5],
         "html_length": len(text),
         "found_marker_at": idx if idx != -1 else None,
         "context_around_marker": context,
