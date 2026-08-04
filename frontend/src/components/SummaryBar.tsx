@@ -30,6 +30,9 @@ export function SummaryBar({ summary }: { summary: Summary }) {
     0,
   );
   const platforms = [...summary.by_platform].sort((a, b) => b.earned - a.earned);
+  const MAX_PILLS = 5;
+  const visiblePlatforms = platforms.slice(0, MAX_PILLS);
+  const overflowPlatforms = platforms.slice(MAX_PILLS);
 
   return (
     <>
@@ -70,16 +73,26 @@ export function SummaryBar({ summary }: { summary: Summary }) {
           <span className="h-4 w-px bg-line" />
           <Stat icon={<Clock size={15} />} value={fmtPlaytime(totalPlaytime) ?? "0h"} title="Total playtime" />
         </div>
-        <div className="mt-2.5 flex flex-wrap gap-1.5">
-          {platforms.map((p) => (
+        <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
+          {visiblePlatforms.map((p) => (
             <span
               key={p.platform}
-              className="rounded-md border border-line bg-ink-800 px-2 py-0.5 text-[11px] text-muted"
+              className={`rounded-md border border-line bg-ink-800 px-2 py-0.5 text-[11px] text-muted ${
+                p.earned === 0 ? "opacity-45" : ""
+              }`}
               title={`${platformLabel(p.platform)} — ${fmtNum(p.earned)} earned`}
             >
               {platformLabel(p.platform)} <span className="text-faint tabular-nums">{fmtNum(p.earned)}</span>
             </span>
           ))}
+          {overflowPlatforms.length > 0 && (
+            <span
+              className="px-1 text-[11px] text-faint"
+              title={overflowPlatforms.map((p) => `${platformLabel(p.platform)} — ${fmtNum(p.earned)}`).join(", ")}
+            >
+              +{overflowPlatforms.length} more
+            </span>
+          )}
         </div>
       </div>
     </div>
