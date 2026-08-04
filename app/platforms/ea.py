@@ -82,7 +82,17 @@ class EAPlatform(Platform):
         if not token:
             raise RuntimeError("Missing EA access token.")
         delay = config.REQUEST_DELAY_SECONDS
-        headers = {"Content-Type": "application/json", "Authorization": f"Bearer {token}"}
+        headers = {
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+            "Authorization": f"Bearer {token}",
+            # EA's edge appears to silently black-hole requests carrying httpx's
+            # default "python-httpx/..." User-Agent rather than rejecting them
+            # cleanly, which surfaces as a ReadTimeout with no useful error.
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                          "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Origin": "https://www.ea.com",
+        }
 
         async with httpx.AsyncClient(timeout=30) as client:
             identity = await self._gql(client, headers, _IDENTITY_QUERY, {})
