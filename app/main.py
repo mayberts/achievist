@@ -331,14 +331,18 @@ async def _sync_one_account(pool, account: dict) -> None:
             log.info("Sync done: %s", plat)
         except Exception as exc:
             log.exception("Sync failed: %s", plat)
+            # Some exceptions (httpx timeouts/connect errors, bare asyncio.TimeoutError)
+            # stringify to "" — fall back to the exception's type name so the UI
+            # always shows *something* instead of a silent blank error.
+            msg = str(exc) or type(exc).__name__
             _sync_progress["platforms"][plat]["status"] = "error"
-            _sync_progress["platforms"][plat]["error"] = str(exc)
+            _sync_progress["platforms"][plat]["error"] = msg
             if account.get("id"):
-                await db.set_account_status(conn, account["id"], "error", str(exc)[:500])
+                await db.set_account_status(conn, account["id"], "error", msg[:500])
             if run_id:
                 await conn.execute(
                     "UPDATE sync_runs SET finished_at = now(), status = 'error', detail = %s WHERE id = %s",
-                    (str(exc), run_id),
+                    (msg, run_id),
                 )
 
 
