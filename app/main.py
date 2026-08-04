@@ -1121,6 +1121,33 @@ async def exophase_origin_debug(
         return result
 
 
+@app.get("/api/exophase-page-debug")
+async def exophase_page_debug(exo_slug: str = Query(...), page_type: str = Query("achievements")):
+    """
+    Temporary diagnostic: fetches an Exophase game achievements/challenges
+    page and reports how many icons the scraper (fetch_game_page_icons)
+    finds, plus a raw HTML snippet — to check whether the page renders the
+    achievement grid as static HTML at all for a given environment (EA's
+    "achievements" pages appear not to, unlike Ubisoft's "challenges" ones).
+    """
+    from app.platforms.exophase import fetch_game_page_icons, _PAGE_HEADERS
+
+    icons = await fetch_game_page_icons(exo_slug, page_type)
+
+    url = f"https://www.exophase.com/game/{exo_slug}/{page_type}/"
+    async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
+        r = await client.get(url, headers=_PAGE_HEADERS)
+
+    return {
+        "url": url,
+        "status_code": r.status_code,
+        "icons_found": len(icons),
+        "sample_icons": dict(list(icons.items())[:5]),
+        "html_length": len(r.text),
+        "html_snippet": r.text[:3000],
+    }
+
+
 @app.post("/api/exophase-refresh", status_code=202)
 async def exophase_refresh():
     """Clear all Exophase-sourced icons and re-enrich from scratch."""
