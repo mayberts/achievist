@@ -101,14 +101,22 @@ class EAPlatform(Platform):
             if not player_psd:
                 raise RuntimeError("Could not resolve EA player identity from this token.")
 
-            external_id = player.get("pd") or player_psd
-            linked_id = await db.upsert_linked_account(conn, "ea", str(external_id))
+            # Key the DB row by the fixed connect-time external_id ("ea"), not the
+            # resolved player id — this platform holds credentials on that one
+            # row, and re-keying it (as an earlier version of this file did)
+            # spawns a second, credential-less row that then wins the "one
+            # account per platform" UI display and fails future syncs.
+            linked_id = await db.upsert_linked_account(conn, "ea", account["external_id"])
+            # Self-heal: an earlier version of this file mis-keyed the DB row by
+            # the resolved player id, spawning a stray credential-less duplicate.
+            # Collapse back down to the one true (credentialed) row if that happened.
+            await db.delete_other_accounts_for_platform(conn, "ea", account["external_id"])
             earned_cache = await db.get_earned_counts(conn, linked_id)
 
             await asyncio.sleep(delay)
             owned = await self._gql(client, headers, _OWNED_GAMES_QUERY, {"locale": "en_US"})
             games = ((owned.get("me") or {}).get("ownedGameProducts") or {}).get("items") or []
-            log.info("EA: %d owned games for %s", len(games), external_id)
+            log.info("EA: %d owned games for %s", len(games), account["external_id"])
 
             for g in games:
                 offer_id = g.get("originOfferId")
