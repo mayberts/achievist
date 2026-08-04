@@ -4,12 +4,14 @@ import logging
 import httpx
 from contextlib import asynccontextmanager
 
+from datetime import datetime, timedelta, timezone
+
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import Cookie, Depends, FastAPI, HTTPException, Query, Response
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from app import backup, config, db, hltb as hltb_names
+from app import auth, backup, config, db, hltb as hltb_names
 from app.db import _fetch, _fetchrow
 from app.platforms import PLATFORMS
 
@@ -378,6 +380,17 @@ async def lifespan(app: FastAPI):
     pool = await db.get_pool()
     await db.apply_schema(pool)
 
+    # One-time migration: deployments that predate multi-user support get
+    # their existing data attached to a freshly created admin account.
+    generated_password = await db.migrate_single_user_to_admin(pool)
+    if generated_password:
+        log.warning("=" * 60)
+        log.warning("Migrated existing data to a new admin account.")
+        log.warning("  username: admin")
+        log.warning("  password: %s", generated_password)
+        log.warning("Log in and change this password from Account Settings.")
+        log.warning("=" * 60)
+
     # One-time migration: seed DB-backed accounts from any legacy .env config.
     # Only fills in platforms that don't already have a connected account, so
     # credentials edited in the UI are never overwritten by stale env values.
@@ -407,6 +420,129 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Achievist", lifespan=lifespan)
+
+
+# ── Auth ──────────────────────────────────────────────────────────────────
+# Phase 1 of multi-user support: users/sessions exist and login works, but
+# most endpoints below this point don't filter by the logged-in user yet
+# (that's a separate, larger follow-up). get_current_user/require_user are
+# in place now so that work can build on them incrementally.
+
+async def get_current_user(achievist_session: str | None = Cookie(None)) -> dict | None:
+    if not achievist_session:
+        return None
+    pool = await db.get_pool()
+    async with pool.connection() as conn:
+        return await db.get_session_user(conn, achievist_session)
+
+
+async def require_user(user: dict | None = Depends(get_current_user)) -> dict:
+    if not user:
+        raise HTTPException(status_code=401, detail="Not logged in")
+    return user
+
+
+async def require_admin(user: dict = Depends(require_user)) -> dict:
+    if not user["is_admin"]:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    return user
+
+
+@app.get("/api/auth/status")
+async def auth_status(user: dict | None = Depends(get_current_user)):
+    pool = await db.get_pool()
+    async with pool.connection() as conn:
+        needs_setup = (await db.count_users(conn)) == 0
+    return {"logged_in": user is not None, "user": user, "needs_setup": needs_setup}
+
+
+@app.post("/api/auth/setup")
+async def auth_setup(payload: dict, response: Response):
+    """Create the first (admin) account. Only allowed while no users exist."""
+    pool = await db.get_pool()
+    async with pool.connection() as conn:
+        if (await db.count_users(conn)) > 0:
+            raise HTTPException(status_code=400, detail="Setup already completed")
+        username = (payload.get("username") or "").strip()
+        password = payload.get("password") or ""
+        if not username or len(password) < 8:
+            raise HTTPException(status_code=400, detail="Username required; password must be 8+ characters")
+        user = await db.create_user(conn, username, auth.hash_password(password), is_admin=True)
+        await _start_session(conn, response, user["id"])
+        return {"id": user["id"], "username": user["username"], "is_admin": True}
+
+
+@app.post("/api/auth/login")
+async def auth_login(payload: dict, response: Response):
+    username = (payload.get("username") or "").strip()
+    password = payload.get("password") or ""
+    pool = await db.get_pool()
+    async with pool.connection() as conn:
+        user = await db.get_user_by_username(conn, username)
+        if not user or not auth.verify_password(password, user["password_hash"]):
+            raise HTTPException(status_code=401, detail="Invalid username or password")
+        await _start_session(conn, response, user["id"])
+        return {
+            "id": user["id"], "username": user["username"],
+            "display_name": user["display_name"], "avatar_url": user["avatar_url"],
+            "is_admin": user["is_admin"],
+        }
+
+
+@app.post("/api/auth/logout")
+async def auth_logout(response: Response, achievist_session: str | None = Cookie(None)):
+    if achievist_session:
+        pool = await db.get_pool()
+        async with pool.connection() as conn:
+            await db.delete_session(conn, achievist_session)
+    response.delete_cookie(auth.SESSION_COOKIE)
+    return {"status": "ok"}
+
+
+async def _start_session(conn, response: Response, user_id: int) -> None:
+    token = auth.new_session_token()
+    expires_at = datetime.now(timezone.utc) + timedelta(days=auth.SESSION_TTL_DAYS)
+    await db.create_session(conn, token, user_id, expires_at)
+    response.set_cookie(
+        auth.SESSION_COOKIE, token,
+        max_age=auth.SESSION_TTL_DAYS * 24 * 3600,
+        httponly=True, samesite="lax",
+    )
+
+
+@app.get("/api/users")
+async def list_users(admin: dict = Depends(require_admin)):
+    pool = await db.get_pool()
+    async with pool.connection() as conn:
+        return await db.list_users(conn)
+
+
+@app.post("/api/users")
+async def create_user_account(payload: dict, admin: dict = Depends(require_admin)):
+    """Admin-only: create an account for a family member (e.g. a child)."""
+    username = (payload.get("username") or "").strip()
+    password = payload.get("password") or ""
+    if not username or len(password) < 8:
+        raise HTTPException(status_code=400, detail="Username required; password must be 8+ characters")
+    pool = await db.get_pool()
+    async with pool.connection() as conn:
+        if await db.get_user_by_username(conn, username):
+            raise HTTPException(status_code=400, detail="That username is already taken")
+        user = await db.create_user(
+            conn, username, auth.hash_password(password),
+            display_name=payload.get("display_name"), is_admin=bool(payload.get("is_admin")),
+        )
+        return user
+
+
+@app.delete("/api/users/{user_id}")
+async def delete_user_account(user_id: int, admin: dict = Depends(require_admin)):
+    if user_id == admin["id"]:
+        raise HTTPException(status_code=400, detail="Can't delete your own account while logged in as it")
+    pool = await db.get_pool()
+    async with pool.connection() as conn:
+        await db.delete_user(conn, user_id)
+    return {"status": "ok"}
 
 
 @app.get("/api/profile")
