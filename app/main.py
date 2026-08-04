@@ -1076,11 +1076,17 @@ async def hltb_test(name: str = Query(...)):
 
 
 @app.get("/api/ea-debug")
-async def ea_debug():
+async def ea_debug(type: str | None = Query(None)):
     """
     Temporary diagnostic: runs a GraphQL introspection query against EA's
     Juno API using the connected account's stored token, to see the real
     schema instead of guessing field names from third-party source code.
+
+    With no `type` param: returns the root Query type's fields plus every
+    type name in the schema (so a real type to drill into can be picked).
+    With `?type=SomeTypeName`: returns that type's fields and their return
+    types (drilling two levels into wrapper types like NON_NULL/LIST).
+
     Remove once the EA integration's query shapes are confirmed working.
     """
     import httpx as _httpx
@@ -1104,16 +1110,34 @@ async def ea_debug():
         "Origin": "https://www.ea.com",
     }
 
-    introspection = """
-    query IntrospectMe {
-      queryType: __type(name: "Query") { fields { name } }
-      me: __type(name: "Me") { fields { name args { name type { name kind ofType { name } } } } }
-      player: __type(name: "Player") { fields { name } }
-    }
-    """
+    if type:
+        query = """
+        query IntrospectType($name: String!) {
+          __type(name: $name) {
+            name
+            kind
+            fields {
+              name
+              args { name type { name kind ofType { name kind ofType { name } } } }
+              type { name kind ofType { name kind ofType { name } } }
+            }
+          }
+        }
+        """
+        variables = {"name": type}
+    else:
+        query = """
+        query IntrospectRoot {
+          __schema {
+            queryType { name fields { name type { name kind ofType { name } } } }
+            types { name kind }
+          }
+        }
+        """
+        variables = {}
 
     async with _httpx.AsyncClient(timeout=30) as client:
-        r = await client.post(_GRAPHQL, json={"query": introspection}, headers=headers)
+        r = await client.post(_GRAPHQL, json={"query": query, "variables": variables}, headers=headers)
         result = {"status_code": r.status_code}
         try:
             result["body"] = r.json()
