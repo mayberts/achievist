@@ -1076,17 +1076,18 @@ async def hltb_test(name: str = Query(...)):
 
 
 @app.get("/api/exophase-origin-debug")
-async def exophase_origin_debug(game_id: int | None = Query(None), player_id: int | None = Query(None)):
+async def exophase_origin_debug(
+    game_id: int | None = Query(None),
+    player_id: int | None = Query(None),
+    environment: str = Query("origin"),
+):
     """
-    Temporary diagnostic: dumps Exophase's raw public API response for the
-    "origin" (EA) environment, using the already-configured Exophase session
-    (EXOPHASE_PLAYER_ID/EXOPHASE_ACCESS_TOKEN — the same ones the Xbox 360
-    icon-enrichment feature uses). This is a much steadier foundation for EA
-    achievement data than EA's own unofficial API: Exophase has already done
-    that reverse-engineering, and exposes it through a public per-player API
-    keyed by our own Exophase login rather than a fragile EA access token.
+    Temporary diagnostic: dumps Exophase's raw public API response for a
+    given environment (e.g. "origin" for EA, "uplay" for Ubisoft), using the
+    already-configured Exophase session (EXOPHASE_PLAYER_ID/EXOPHASE_ACCESS_TOKEN
+    — the same ones the Xbox 360 icon-enrichment feature uses).
 
-    With no params: dumps the raw games list for environment=origin.
+    With no game_id/player_id: dumps the raw games list for `environment`.
     With ?game_id=&player_id=: dumps the raw "earned achievements" response
     for that game (player_id here is Exophase's per-game master_playerid,
     found in the games-list dump, not our own EXOPHASE_PLAYER_ID).
@@ -1109,7 +1110,7 @@ async def exophase_origin_debug(game_id: int | None = Query(None), player_id: in
         else:
             r = await client.get(
                 f"{_API}/public/player/{config.EXOPHASE_PLAYER_ID}/games",
-                params={"page": 1, "environment": "origin", "sort": 1, "showHidden": 0, "query": ""},
+                params={"page": 1, "environment": environment, "sort": 1, "showHidden": 0, "query": ""},
                 headers=headers,
             )
         result = {"status_code": r.status_code}
