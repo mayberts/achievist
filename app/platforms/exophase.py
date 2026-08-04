@@ -74,6 +74,101 @@ async def fetch_games_list(
     return all_games
 
 
+def _slug_from_endpoint(endpoint_awards: str) -> str | None:
+    """'/game/battlefield-v-deluxe-edition-origin/achievements/#123' -> 'battlefield-v-deluxe-edition-origin'."""
+    m = re.search(r"/game/([^/]+)/achievements/", endpoint_awards or "")
+    return m.group(1) if m else None
+
+
+async def fetch_environment_games(
+    client: httpx.AsyncClient, player_id: str, access_token: str, environment: str
+) -> list[dict]:
+    """
+    Return all games in the given Exophase environment for the player, with
+    the fields needed for a full sync (not just the Xbox-specific icon
+    enrichment that fetch_games_list() was originally built for).
+    """
+    all_games: list[dict] = []
+    page = 1
+    headers = dict(_BASE_HEADERS)
+    headers["Cookie"] = f"ACCESS_TOKEN={access_token}"
+
+    while True:
+        resp = await client.get(
+            f"{_API}/public/player/{player_id}/games",
+            params={"page": page, "environment": environment, "sort": 1, "showHidden": 0, "query": ""},
+            headers=headers,
+        )
+        if resp.status_code != 200:
+            log.warning("Exophase games list HTTP %d (page %d, env %s)", resp.status_code, page, environment)
+            break
+        data = resp.json()
+        batch = data.get("games") or []
+        if not batch:
+            break
+        for g in batch:
+            meta = g.get("meta") or {}
+            exo_slug = _slug_from_endpoint(meta.get("endpoint_awards") or "")
+            if not exo_slug:
+                continue
+            all_games.append({
+                "master_id": g["master_id"],
+                "master_playerid": g["master_playerid"],
+                "title": meta.get("title", ""),
+                "total_awards": g.get("total_awards") or 0,
+                "earned_awards": g.get("earned_awards") or 0,
+                "cover": g.get("resource_standard"),
+                "exo_slug": exo_slug,
+            })
+        if len(batch) < 25:
+            break
+        page += 1
+    return all_games
+
+
+async def fetch_earned(master_playerid: int, game_id: int) -> dict[str, dict]:
+    """Return {achievement_slug: {"timestamp": int, "icon": str}} for earned achievements."""
+    earned: dict[str, dict] = {}
+    last = 9999999999999
+    seen: set[int] = set()
+
+    async with httpx.AsyncClient(timeout=30, headers=_BASE_HEADERS) as client:
+        while True:
+            resp = await client.get(
+                f"{_API}/public/player/{master_playerid}/game/{game_id}/earned",
+                params={"last": last},
+            )
+            if resp.status_code != 200:
+                log.warning("Exophase earned HTTP %d (game %s)", resp.status_code, game_id)
+                break
+            data = resp.json()
+            items = data.get("list") or []
+            if not items:
+                break
+
+            for item in items:
+                slug = item.get("slug")
+                icon_path = (item.get("icons") or {}).get("m") or (item.get("icons") or {}).get("s")
+                if slug:
+                    earned[slug] = {
+                        "timestamp": item.get("timestamp"),
+                        "icon": f"{_IMG_BASE}{icon_path}" if icon_path else None,
+                    }
+
+            timestamps = [item.get("timestamp") for item in items if item.get("timestamp")]
+            if not timestamps:
+                break
+            oldest = min(timestamps)
+            if oldest in seen:
+                break
+            seen.add(oldest)
+            if len(items) < 12:
+                break
+            last = oldest
+
+    return earned
+
+
 async def fetch_game_page_icons(exo_slug: str) -> dict[str, str]:
     """Scrape the Exophase game achievements page for all icons (earned + locked)."""
     url = f"https://www.exophase.com/game/{exo_slug}/achievements/"
