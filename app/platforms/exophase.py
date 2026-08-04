@@ -32,9 +32,9 @@ def _to_slug(name: str) -> str:
 
 
 async def fetch_games_list(
-    client: httpx.AsyncClient, player_id: str, access_token: str
+    client: httpx.AsyncClient, player_id: str, access_token: str, environment: str = "xbox"
 ) -> list[dict]:
-    """Return all Xbox games for the player with exophase metadata."""
+    """Return all games in the given Exophase environment for the player."""
     all_games: list[dict] = []
     page = 1
     headers = dict(_BASE_HEADERS)
@@ -43,7 +43,7 @@ async def fetch_games_list(
     while True:
         resp = await client.get(
             f"{_API}/public/player/{player_id}/games",
-            params={"page": page, "environment": "xbox", "sort": 1, "showHidden": 0, "query": ""},
+            params={"page": page, "environment": environment, "sort": 1, "showHidden": 0, "query": ""},
             headers=headers,
         )
         if resp.status_code != 200:
