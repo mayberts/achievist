@@ -331,6 +331,32 @@ async def fetch_game_page_awards(exo_slug: str, page_type: str = "achievements")
     return parser.awards
 
 
+def _dedupe_awards(awards: list[dict]) -> list[dict]:
+    """
+    EA sometimes lists the exact same underlying achievement twice under
+    different numeric ids — same name and description, e.g. one copy
+    sourced per platform bundled under a single Origin listing — which
+    otherwise shows as literal duplicate rows in the UI. Collapse entries
+    sharing identical (name, description) into one, keeping every
+    id-variant's slug under "alt_slugs" so unlock status can still be
+    checked against any of them.
+    """
+    merged: dict[tuple, dict] = {}
+    for a in awards:
+        if not a.get("slug"):
+            continue
+        key = (a.get("name"), a.get("description"))
+        if key not in merged:
+            m = dict(a)
+            m["alt_slugs"] = [a["slug"]]
+            merged[key] = m
+        else:
+            merged[key]["alt_slugs"].append(a["slug"])
+            if not merged[key].get("icon") and a.get("icon"):
+                merged[key]["icon"] = a["icon"]
+    return list(merged.values())
+
+
 def _humanize(slug: str) -> str:
     return slug.replace("-", " ").title()
 
@@ -403,8 +429,8 @@ async def sync_environment(worker, conn, platform_key: str, environment: str, ac
             continue
 
         await asyncio.sleep(delay)
-        awards = await fetch_game_page_awards(exo_slug, g["page_type"] or "achievements")
-        awards_by_slug = {a["slug"]: a for a in awards if a.get("slug")}
+        awards = _dedupe_awards(await fetch_game_page_awards(exo_slug, g["page_type"] or "achievements"))
+        awards_by_slug = {a["slug"]: a for a in awards}
         await asyncio.sleep(delay)
         earned = await fetch_earned(g["master_playerid"], g["master_id"])  # {slug: {timestamp, icon}}
 
@@ -419,7 +445,14 @@ async def sync_environment(worker, conn, platform_key: str, environment: str, ac
         for slug in all_slugs:
             worker._inc("achievements_synced")
             a = awards_by_slug.get(slug) or {}
-            earned_info = earned.get(slug)
+            # Unlock status must be checked against every id-variant of a
+            # deduped achievement (e.g. its Xbox-sourced and PS-sourced
+            # copies), not just the canonical slug picked to represent it.
+            earned_info = None
+            for alt in a.get("alt_slugs") or [slug]:
+                cand = earned.get(alt)
+                if cand and (earned_info is None or (cand.get("timestamp") or 0) < (earned_info.get("timestamp") or float("inf"))):
+                    earned_info = cand
             is_unlocked = earned_info is not None or a.get("locked") is False
             icon = (earned_info or {}).get("icon") or a.get("icon")
             db_ach_id = await db.upsert_achievement(

@@ -125,6 +125,32 @@ async def test_fetch_earned_does_not_collide_on_shared_slug(monkeypatch):
     assert set(earned) == {"2840-hidden-achievement", "2844-hidden-achievement"}
 
 
+def test_dedupe_awards_collapses_identical_name_and_description():
+    """
+    Real bug: EA sometimes lists the same achievement twice under different
+    numeric ids (e.g. a per-platform copy) — same name/description, distinct
+    slug — which showed as literal duplicate rows in the UI.
+    """
+    awards = [
+        {"slug": "108-backseat-mechanic", "name": "Backseat Mechanic",
+         "description": "You helped fix the bike.", "icon": "https://cdn/a.png",
+         "points": "10", "rarity_pct": "83.42", "locked": False},
+        {"slug": "230-backseat-mechanic", "name": "Backseat Mechanic",
+         "description": "You helped fix the bike.", "icon": None,
+         "points": "10", "rarity_pct": "83.42", "locked": True},
+        {"slug": "109-in-sync", "name": "In Sync",
+         "description": "Music was played in harmony.", "icon": "https://cdn/b.png",
+         "points": "20", "rarity_pct": "28.21", "locked": False},
+    ]
+    deduped = exophase_module._dedupe_awards(awards)
+    assert len(deduped) == 2
+
+    bm = next(a for a in deduped if a["name"] == "Backseat Mechanic")
+    assert bm["slug"] == "108-backseat-mechanic"  # first occurrence wins as canonical
+    assert set(bm["alt_slugs"]) == {"108-backseat-mechanic", "230-backseat-mechanic"}
+    assert bm["icon"] == "https://cdn/a.png"  # kept from whichever copy actually had one
+
+
 @pytest.mark.parametrize("val,expected", [("10", 10), ("10.0", 10), (None, None), ("garbage", None)])
 def test_to_int(val, expected):
     assert exophase_module._to_int(val) == expected
