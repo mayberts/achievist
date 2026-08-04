@@ -151,6 +151,35 @@ def test_dedupe_awards_collapses_identical_name_and_description():
     assert bm["icon"] == "https://cdn/a.png"  # kept from whichever copy actually had one
 
 
+def test_dedupe_awards_matches_despite_case_and_punctuation_differences():
+    """
+    Real bug: Ubisoft's duplicate copies don't match exactly like EA's do —
+    "DIY" vs "Diy", "Escape From..." vs "Escape from...", "Amunet's Gift"
+    vs "Amunets Gift". An exact (name, description) match missed all of
+    these; must normalize (case/punctuation-insensitive) instead.
+    """
+    awards = [
+        {"slug": "1-diy", "name": "DIY", "description": "Acquire 5 of Juan's Resolver Weapons",
+         "icon": None, "points": None, "rarity_pct": "41", "locked": False},
+        {"slug": "2-diy", "name": "Diy", "description": None,
+         "icon": "https://cdn/diy.png", "points": None, "rarity_pct": None, "locked": True},
+        {"slug": "3-amunet", "name": "Amunet's Gift", "description": "Collect a Roman Artifact.",
+         "icon": "https://cdn/a.png", "points": None, "rarity_pct": "61.29", "locked": False},
+        {"slug": "4-amunet", "name": "Amunets Gift", "description": None,
+         "icon": None, "points": None, "rarity_pct": None, "locked": True},
+    ]
+    deduped = exophase_module._dedupe_awards(awards)
+    assert len(deduped) == 2
+
+    diy = next(a for a in deduped if exophase_module._to_slug(a["name"]) == "diy")
+    assert set(diy["alt_slugs"]) == {"1-diy", "2-diy"}
+    assert diy["icon"] == "https://cdn/diy.png"  # backfilled from the copy that had one
+    assert diy["description"] == "Acquire 5 of Juan's Resolver Weapons"
+
+    amunet = next(a for a in deduped if exophase_module._to_slug(a["name"]) == "amunets-gift")
+    assert set(amunet["alt_slugs"]) == {"3-amunet", "4-amunet"}
+
+
 @pytest.mark.parametrize("val,expected", [("10", 10), ("10.0", 10), (None, None), ("garbage", None)])
 def test_to_int(val, expected):
     assert exophase_module._to_int(val) == expected

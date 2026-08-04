@@ -333,27 +333,39 @@ async def fetch_game_page_awards(exo_slug: str, page_type: str = "achievements")
 
 def _dedupe_awards(awards: list[dict]) -> list[dict]:
     """
-    EA sometimes lists the exact same underlying achievement twice under
-    different numeric ids — same name and description, e.g. one copy
-    sourced per platform bundled under a single Origin listing — which
-    otherwise shows as literal duplicate rows in the UI. Collapse entries
-    sharing identical (name, description) into one, keeping every
+    Some platforms (EA, Ubisoft) list the same underlying achievement twice
+    under different numeric ids — e.g. one copy sourced per source platform
+    bundled into a single listing — which otherwise shows as literal
+    duplicate rows in the UI. The duplicate copies don't always match
+    exactly: Ubisoft's differ in capitalization/punctuation ("DIY" vs "Diy",
+    "Escape From..." vs "Escape from...", "Amunet's Gift" vs "Amunets Gift")
+    and one copy sometimes lacks the description the other has. Group by
+    normalized name alone (case/punctuation-insensitive via _to_slug) rather
+    than requiring an exact (name, description) match, keeping every
     id-variant's slug under "alt_slugs" so unlock status can still be
-    checked against any of them.
+    checked against any of them, and preferring whichever copy actually has
+    a description.
     """
-    merged: dict[tuple, dict] = {}
+    merged: dict[str, dict] = {}
     for a in awards:
-        if not a.get("slug"):
+        if not a.get("slug") or not a.get("name"):
             continue
-        key = (a.get("name"), a.get("description"))
+        key = _to_slug(a["name"])
         if key not in merged:
             m = dict(a)
             m["alt_slugs"] = [a["slug"]]
             merged[key] = m
         else:
-            merged[key]["alt_slugs"].append(a["slug"])
-            if not merged[key].get("icon") and a.get("icon"):
-                merged[key]["icon"] = a["icon"]
+            existing = merged[key]
+            existing["alt_slugs"].append(a["slug"])
+            if not existing.get("description") and a.get("description"):
+                existing["description"] = a["description"]
+            if not existing.get("icon") and a.get("icon"):
+                existing["icon"] = a["icon"]
+            if not existing.get("rarity_pct") and a.get("rarity_pct"):
+                existing["rarity_pct"] = a["rarity_pct"]
+            if not existing.get("points") and a.get("points"):
+                existing["points"] = a["points"]
     return list(merged.values())
 
 
@@ -377,25 +389,31 @@ def _to_float(val) -> float | None:
 
 async def _dedupe_stored_achievements(conn, platform_game_id: int) -> None:
     """
-    Collapse achievement rows for a platform_game that share identical
-    (name, description) — leftover from before _dedupe_awards() existed, so
-    already-synced games would otherwise keep their stale duplicates
-    forever (the incremental-sync cache skips re-scraping once counts
-    already match, so fixed-forward dedupe logic never runs for them).
-    Keeps whichever duplicate has an unlocked record (if any), else the
-    lowest id; deletes the rest (user_achievements cascade-deletes with them).
+    Collapse achievement rows for a platform_game that represent the same
+    achievement under slightly different text — leftover from before
+    _dedupe_awards() existed, so already-synced games would otherwise keep
+    their stale duplicates forever (the incremental-sync cache skips
+    re-scraping once counts already match, so fixed-forward dedupe logic
+    never runs for them). Grouped by normalized name (case/punctuation
+    stripped), matching _dedupe_awards()'s key — an exact-text match missed
+    Ubisoft's duplicates, which differ in capitalization/punctuation (e.g.
+    "DIY" vs "Diy", "Escape From..." vs "Escape from...").
+    Keeps whichever duplicate has an unlocked record (if any), else
+    whichever has a description, else the lowest id; deletes the rest
+    (user_achievements cascade-deletes with them).
     """
     await conn.execute(
         """
         WITH ranked AS (
             SELECT a.id,
                    ROW_NUMBER() OVER (
-                       PARTITION BY a.platform_game_id, a.name, a.description
+                       PARTITION BY a.platform_game_id, regexp_replace(lower(a.name), '[^a-z0-9]+', '', 'g')
                        ORDER BY
                            EXISTS (
                                SELECT 1 FROM user_achievements ua
                                WHERE ua.achievement_id = a.id AND ua.unlocked
                            ) DESC,
+                           (a.description IS NOT NULL) DESC,
                            a.id ASC
                    ) AS rn
             FROM achievements a
