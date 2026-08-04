@@ -1121,6 +1121,38 @@ async def exophase_origin_debug(
         return result
 
 
+@app.get("/api/exophase-match-debug")
+async def exophase_match_debug(
+    exo_slug: str = Query(...),
+    page_type: str = Query("achievements"),
+    master_playerid: int = Query(...),
+    master_id: int = Query(...),
+):
+    """
+    Temporary diagnostic: some unlocked achievements aren't showing as
+    unlocked after the HTML-parser rewrite, meaning the earned-feed's slug
+    doesn't always line up with the achievements page's href-derived slug.
+    This reports both slug sets and exactly which earned slugs have no
+    matching page award, so the mismatch pattern can be seen directly
+    instead of guessed at.
+    """
+    from app.platforms.exophase import fetch_game_page_awards, fetch_earned
+
+    awards = await fetch_game_page_awards(exo_slug, page_type)
+    earned = await fetch_earned(master_playerid, master_id)
+
+    page_slugs = {a["slug"] for a in awards if a.get("slug")}
+    earned_slugs = set(earned)
+
+    return {
+        "page_award_count": len(awards),
+        "earned_count": len(earned),
+        "earned_not_matched_in_page": sorted(earned_slugs - page_slugs),
+        "page_slugs_sample": sorted(page_slugs)[:15],
+        "earned_slugs_sample": sorted(earned_slugs)[:15],
+    }
+
+
 @app.get("/api/exophase-page-debug")
 async def exophase_page_debug(exo_slug: str = Query(...), page_type: str = Query("achievements")):
     """
