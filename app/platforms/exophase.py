@@ -26,6 +26,18 @@ _TIPPY_NAME = re.compile(r'data-tippy-content=".*?&lt;strong&gt;(.*?)&lt;/strong
 _SRC = re.compile(r'\bsrc="(https://m\.exophase\.com/[^"?]+)')
 
 
+# Shared connect-form fields for every platform that rides on Exophase
+# (EA/Ubisoft/GOG/Google Play) — optional, since each user can instead rely
+# on the server's shared EXOPHASE_PLAYER_ID/ACCESS_TOKEN env vars.
+CONNECT_FIELDS: list[dict] = [
+    {"name": "exophase_player_id", "label": "Exophase Player ID", "type": "text", "required": False,
+     "help": "Your own Exophase player id, if you don't want to share the server's default Exophase login."},
+    {"name": "exophase_access_token", "label": "Exophase Access Token", "type": "password", "required": False,
+     "secret": True,
+     "help": "The ACCESS_TOKEN cookie from your own logged-in session on exophase.com."},
+]
+
+
 def _to_slug(name: str) -> str:
     s = name.lower()
     s = s.replace("'", "").replace("’", "")  # strip apostrophes before hyphenating
@@ -425,21 +437,30 @@ async def _dedupe_stored_achievements(conn, platform_game_id: int) -> None:
     )
 
 
-async def sync_environment(worker, conn, platform_key: str, environment: str, account: dict) -> None:
+async def sync_environment(
+    worker, conn, platform_key: str, environment: str, account: dict,
+    player_id: str | None = None, access_token: str | None = None,
+) -> None:
     """
     Shared sync body for any platform whose real data comes from Exophase's
     public per-player API rather than its own (EA and Ubisoft both landed
     here after their own unofficial APIs proved unreliable/low-value —
     see each platform module's docstring for specifics). `worker` is the
     calling Platform instance, used for its `_inc` progress counter.
+
+    `player_id`/`access_token` are this account's own Exophase credentials
+    (each family member can set their own via the account's connect form);
+    callers fall back to the server-wide EXOPHASE_PLAYER_ID/ACCESS_TOKEN env
+    vars when a user hasn't set their own.
     """
     from datetime import datetime
     from app import config, db
 
-    if not config.EXOPHASE_PLAYER_ID or not config.EXOPHASE_ACCESS_TOKEN:
+    if not player_id or not access_token:
         raise RuntimeError(
-            f"EXOPHASE_PLAYER_ID / EXOPHASE_ACCESS_TOKEN not configured — {platform_key} sync "
-            "rides on the app's Exophase login, same as Xbox 360 icon enrichment."
+            f"Exophase player id / access token not configured — {platform_key} sync needs "
+            "either your own Exophase credentials on this account, or the server's shared "
+            "EXOPHASE_PLAYER_ID/EXOPHASE_ACCESS_TOKEN env vars."
         )
     delay = config.REQUEST_DELAY_SECONDS
 
@@ -452,7 +473,7 @@ async def sync_environment(worker, conn, platform_key: str, environment: str, ac
 
     async with httpx.AsyncClient(timeout=30) as client:
         games = await fetch_environment_games(
-            client, config.EXOPHASE_PLAYER_ID, config.EXOPHASE_ACCESS_TOKEN, environment,
+            client, player_id, access_token, environment,
         )
     log.info("%s (via Exophase): %d games", platform_key, len(games))
 
