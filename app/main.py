@@ -571,6 +571,91 @@ async def games(
     }
 
 
+_RARITY_TIER_SQL = {
+    "Legendary": "a.rarity_pct <= 1",
+    "Epic": "a.rarity_pct > 1 AND a.rarity_pct <= 5",
+    "Rare": "a.rarity_pct > 5 AND a.rarity_pct <= 20",
+    "Uncommon": "a.rarity_pct > 20 AND a.rarity_pct <= 50",
+    "Common": "a.rarity_pct > 50",
+}
+
+
+@app.get("/api/achievements/search")
+async def achievements_search(
+    q: str | None = None,
+    rarity: str | None = Query(None, pattern="^(Legendary|Epic|Rare|Uncommon|Common)$"),
+    platform: str | None = None,
+    unlocked: str | None = Query(None, pattern="^(true|false)$"),
+    sort: str = Query("rarity", pattern="^(rarity|name|points|unlocked_at)$"),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(24, ge=1, le=200),
+):
+    """Search achievements across the whole library, not just within one game."""
+    order = {
+        "rarity": "a.rarity_pct ASC NULLS LAST, a.id",
+        "name": "a.name ASC, a.id",
+        "points": "a.points DESC NULLS LAST, a.id",
+        "unlocked_at": "ua.unlocked_at DESC NULLS LAST, a.id",
+    }[sort]
+
+    filters = []
+    params: list = []
+
+    if q:
+        filters.append("(a.name ILIKE %s OR a.description ILIKE %s)")
+        params.extend([f"%{q}%", f"%{q}%"])
+    if platform:
+        filters.append("pg.platform = %s")
+        params.append(platform)
+    if unlocked == "true":
+        filters.append("ua.unlocked = TRUE")
+    elif unlocked == "false":
+        filters.append("(ua.unlocked IS NULL OR ua.unlocked = FALSE)")
+    if rarity:
+        filters.append(_RARITY_TIER_SQL[rarity])
+
+    where = ("WHERE " + " AND ".join(filters)) if filters else ""
+    offset = (page - 1) * page_size
+
+    pool = await db.get_pool()
+    async with pool.connection() as conn:
+        total_row = await _fetchrow(
+            conn,
+            f"""
+            SELECT COUNT(*) AS cnt
+            FROM achievements a
+            JOIN platform_games pg ON pg.id = a.platform_game_id
+            LEFT JOIN user_achievements ua ON ua.achievement_id = a.id
+            {where}
+            """,
+            *params,
+        )
+        rows = await _fetch(
+            conn,
+            f"""
+            SELECT
+                a.platform_ach_id, a.name, a.description, a.icon_url, a.points, a.rarity_pct,
+                ua.unlocked, ua.unlocked_at,
+                pg.id AS platform_game_id, pg.name AS game_name, pg.platform,
+                pg.sgdb_cover_url, pg.icon_url AS game_icon_url
+            FROM achievements a
+            JOIN platform_games pg ON pg.id = a.platform_game_id
+            LEFT JOIN user_achievements ua ON ua.achievement_id = a.id
+            {where}
+            ORDER BY {order}
+            LIMIT %s OFFSET %s
+            """,
+            *params, page_size, offset,
+        )
+
+    return {
+        "total": total_row["cnt"],
+        "page": page,
+        "page_size": page_size,
+        "achievements": [dict(r) for r in rows],
+    }
+
+
 @app.get("/api/games/{platform_game_id}")
 async def game_detail(platform_game_id: int):
     pool = await db.get_pool()

@@ -1,6 +1,7 @@
 import type {
   Account,
   Achievement,
+  AchievementSearchResponse,
   Activity,
   BackupsResponse,
   GameDetail,
@@ -43,6 +44,16 @@ export interface GamesQuery {
   platform?: string;
   search?: string;
   completion?: string;
+  page?: number;
+  page_size?: number;
+}
+
+export interface AchievementSearchQuery {
+  q?: string;
+  rarity?: string;
+  platform?: string;
+  unlocked?: string;
+  sort?: string;
   page?: number;
   page_size?: number;
 }
@@ -109,4 +120,12 @@ export const api = {
   // Achievement-unlock notification feed
   recentUnlocks: (since: string) =>
     get<RecentUnlocksResponse>(`/api/unlocks/recent?since=${encodeURIComponent(since)}`),
+
+  searchAchievements: (q: AchievementSearchQuery) => {
+    const params = new URLSearchParams();
+    Object.entries(q).forEach(([k, v]) => {
+      if (v !== undefined && v !== "" && v !== null) params.set(k, String(v));
+    });
+    return get<AchievementSearchResponse>(`/api/achievements/search?${params.toString()}`);
+  },
 };

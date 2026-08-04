@@ -8,6 +8,7 @@ import { SummaryBar } from "./components/SummaryBar";
 import { BackToTop } from "./components/BackToTop";
 import { useToast } from "./components/Toast";
 import { GamesPage } from "./pages/GamesPage";
+import { AchievementsPage } from "./pages/AchievementsPage";
 import { ActivityPage } from "./pages/ActivityPage";
 import { AccountsPage } from "./pages/AccountsPage";
 import { MaintenancePage } from "./pages/MaintenancePage";
@@ -181,6 +182,7 @@ export default function App() {
               element={
                 <>
                   {tab === "games" && <GamesPage summary={summary} />}
+                  {tab === "achievements" && <AchievementsPage />}
                   {tab === "activity" && <ActivityPage />}
                   {tab === "accounts" && <AccountsPage />}
                   {tab === "maintenance" && <MaintenancePage />}

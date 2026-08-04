@@ -125,6 +125,7 @@ The frontend is a full SPA; these are the main endpoints it talks to (see `app/m
 | GET / PUT | `/api/profile` | Your display name and avatar (shown in the header — click it to edit) |
 | GET | `/api/summary` | Overall + per-platform stats |
 | GET | `/api/games` | Library, paginated (`sort`, `platform`, `completion`, `search`) |
+| GET | `/api/achievements/search` | Achievement search across the whole library (`q`, `rarity`, `platform`, `unlocked`, `sort`) |
 | GET | `/api/games/{id}` | Game detail with achievements and rarity |
 | GET | `/api/activity` | Unlock heatmap, streaks, recent-activity feed |
 | GET | `/api/statistics` | Rarity/completion breakdowns, records, progression |
