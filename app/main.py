@@ -1599,31 +1599,6 @@ async def psn_service_ticket(payload: dict):
     return {"status": "ok", "message": "PlayStation session saved. You can now add accounts by Online ID."}
 
 
-@app.get("/api/ubisoft-service-status")
-async def ubisoft_service_status():
-    """Whether the backend Ubisoft service ticket is present and still valid."""
-    from app.ubisoft_auth import service_ticket_valid
-    return {"signed_in": await service_ticket_valid()}
-
-
-@app.post("/api/ubisoft-service-ticket")
-async def ubisoft_service_ticket(payload: dict):
-    """
-    Store the backend Ubisoft service credential from a browser session ticket.
-    Body: {"ticket": "<ewog… value from connect.ubisoft.com localStorage>"}
-    """
-    from app.ubisoft_auth import save_service_ticket
-    ticket = (payload.get("ticket") or "").strip()
-    if not ticket:
-        raise HTTPException(status_code=400, detail="ticket is required")
-    try:
-        profile_id = await save_service_ticket(ticket)
-    except RuntimeError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    return {"status": "ok", "profile_id": profile_id,
-            "message": "Ubisoft service session saved. You can now add accounts by username."}
-
-
 @app.get("/api/xbox-service-status")
 async def xbox_service_status():
     """Whether a backend Xbox sign-in exists (so gamertag lookups can work)."""
