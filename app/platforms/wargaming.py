@@ -62,7 +62,7 @@ class WargamingPlatform(Platform):
         if not app_id or not nickname:
             raise RuntimeError("Wargaming not configured — set WARGAMING_APP_ID and WARGAMING_NICKNAME")
 
-        linked_id = await db.upsert_linked_account(conn, "wargaming", nickname)
+        linked_id = await db.upsert_linked_account(conn, account["user_id"], "wargaming", nickname)
         earned_cache = await db.get_earned_counts(conn, linked_id)
 
         async with httpx.AsyncClient(timeout=30) as client:

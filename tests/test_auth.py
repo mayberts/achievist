@@ -111,7 +111,14 @@ async def test_admin_can_create_and_delete_child_account(db_conn):
 
 async def test_migrate_single_user_to_admin_attaches_existing_data(db_conn):
     pool = await db.get_pool()
-    account_id = await db.upsert_account(db_conn, "steam", "111", {}, "Old Profile Name")
+    # Simulates a pre-multi-user row (no user_id yet) — can't use
+    # db.upsert_account() here since it now always requires a real user_id.
+    row = await db._fetchrow(
+        db_conn,
+        "INSERT INTO linked_accounts (platform, external_id, display_name) "
+        "VALUES ('steam', '111', 'Old Profile Name') RETURNING id",
+    )
+    account_id = row["id"]
     await db_conn.commit()
 
     password = await db.migrate_single_user_to_admin(pool)

@@ -153,28 +153,47 @@ async def _fetch(conn, query: str, *args):
         return await cur.fetchall()
 
 
-async def upsert_linked_account(conn, platform: str, external_id: str) -> int:
+async def upsert_linked_account(conn, user_id: int, platform: str, external_id: str) -> int:
     row = await _fetchrow(
         conn,
         """
-        INSERT INTO linked_accounts (platform, external_id, display_name)
-        VALUES (%s, %s, %s)
-        ON CONFLICT (platform, external_id) DO UPDATE SET enabled = TRUE
+        INSERT INTO linked_accounts (user_id, platform, external_id, display_name)
+        VALUES (%s, %s, %s, %s)
+        ON CONFLICT (user_id, platform, external_id) DO UPDATE SET enabled = TRUE
         RETURNING id
         """,
-        platform, external_id, external_id,
+        user_id, platform, external_id, external_id,
     )
     return row["id"]
 
 
 # ── Connected-account management ─────────────────────────────────────────────
 
-async def list_accounts(conn) -> list[dict]:
-    """Return all connected accounts with their credentials and status."""
+async def list_accounts(conn, user_id: int) -> list[dict]:
+    """Return this user's connected accounts with their credentials and status."""
     return await _fetch(
         conn,
         """
         SELECT id, platform, external_id, display_name, enabled,
+               credentials, status, last_error, last_synced_at, created_at
+        FROM linked_accounts
+        WHERE user_id = %s
+        ORDER BY platform, id
+        """,
+        user_id,
+    )
+
+
+async def list_all_accounts(conn) -> list[dict]:
+    """
+    Every connected account across every user, including which user owns
+    it — used only by the background sync job (scheduled + "sync all"),
+    never by a request handler acting on behalf of one logged-in user.
+    """
+    return await _fetch(
+        conn,
+        """
+        SELECT id, user_id, platform, external_id, display_name, enabled,
                credentials, status, last_error, last_synced_at, created_at
         FROM linked_accounts
         ORDER BY platform, id
@@ -182,36 +201,37 @@ async def list_accounts(conn) -> list[dict]:
     )
 
 
-async def get_account(conn, account_id: int) -> dict | None:
+async def get_account(conn, account_id: int, user_id: int) -> dict | None:
+    """user_id is required so one user can't fetch/act on another's account by guessing its id."""
     return await _fetchrow(
         conn,
         """
         SELECT id, platform, external_id, display_name, enabled,
                credentials, status, last_error, last_synced_at, created_at
-        FROM linked_accounts WHERE id = %s
+        FROM linked_accounts WHERE id = %s AND user_id = %s
         """,
-        account_id,
+        account_id, user_id,
     )
 
 
-async def get_account_by_key(conn, platform: str, external_id: str) -> dict | None:
+async def get_account_by_key(conn, user_id: int, platform: str, external_id: str) -> dict | None:
     return await _fetchrow(
         conn,
         "SELECT id, platform, external_id, credentials FROM linked_accounts "
-        "WHERE platform = %s AND external_id = %s",
-        platform, external_id,
+        "WHERE user_id = %s AND platform = %s AND external_id = %s",
+        user_id, platform, external_id,
     )
 
 
-async def upsert_account(conn, platform: str, external_id: str,
+async def upsert_account(conn, user_id: int, platform: str, external_id: str,
                          credentials: dict, display_name: str | None = None) -> int:
     """Create or update a connected account, storing credentials as JSONB."""
     row = await _fetchrow(
         conn,
         """
-        INSERT INTO linked_accounts (platform, external_id, display_name, credentials, enabled, status)
-        VALUES (%s, %s, %s, %s, TRUE, 'connected')
-        ON CONFLICT (platform, external_id) DO UPDATE
+        INSERT INTO linked_accounts (user_id, platform, external_id, display_name, credentials, enabled, status)
+        VALUES (%s, %s, %s, %s, %s, TRUE, 'connected')
+        ON CONFLICT (user_id, platform, external_id) DO UPDATE
             SET display_name = COALESCE(EXCLUDED.display_name, linked_accounts.display_name),
                 credentials  = EXCLUDED.credentials,
                 enabled      = TRUE,
@@ -219,7 +239,7 @@ async def upsert_account(conn, platform: str, external_id: str,
                 last_error   = NULL
         RETURNING id
         """,
-        platform, external_id, display_name or external_id, Jsonb(credentials),
+        user_id, platform, external_id, display_name or external_id, Jsonb(credentials),
     )
     return row["id"]
 
@@ -237,27 +257,30 @@ async def set_account_status(conn, account_id: int, status: str,
     )
 
 
-async def delete_other_accounts_for_platform(conn, platform: str, keep_external_id: str) -> None:
+async def delete_other_accounts_for_platform(conn, user_id: int, platform: str, keep_external_id: str) -> None:
     """
-    This app supports one account per platform. If a reconnect resolves to a
-    different external_id than before (e.g. Ubisoft/PSN re-resolving a
-    username to a different profile id), drop the other row(s) for this
-    platform instead of leaving them as invisible, error-counted orphans.
+    This app supports one account per platform per user. If a reconnect
+    resolves to a different external_id than before (e.g. Ubisoft/PSN
+    re-resolving a username to a different profile id), drop the other
+    row(s) for this platform instead of leaving them as invisible,
+    error-counted orphans. Scoped to user_id so this can't touch another
+    user's account for the same platform.
     """
     await conn.execute(
-        "DELETE FROM linked_accounts WHERE platform = %s AND external_id != %s",
-        (platform, keep_external_id),
+        "DELETE FROM linked_accounts WHERE user_id = %s AND platform = %s AND external_id != %s",
+        (user_id, platform, keep_external_id),
     )
 
 
-async def delete_account(conn, account_id: int) -> None:
+async def delete_account(conn, account_id: int, user_id: int) -> None:
     """Remove a connected account and its synced data (FK cascade handles children)."""
-    await conn.execute("DELETE FROM linked_accounts WHERE id = %s", (account_id,))
+    await conn.execute("DELETE FROM linked_accounts WHERE id = %s AND user_id = %s", (account_id, user_id))
 
 
-async def account_exists(conn, platform: str) -> bool:
+async def account_exists(conn, user_id: int, platform: str) -> bool:
     row = await _fetchrow(
-        conn, "SELECT 1 AS x FROM linked_accounts WHERE platform = %s LIMIT 1", platform
+        conn, "SELECT 1 AS x FROM linked_accounts WHERE user_id = %s AND platform = %s LIMIT 1",
+        user_id, platform,
     )
     return row is not None
 

@@ -15,8 +15,8 @@ pytestmark = requires_db
 
 
 async def test_dedupe_stored_achievements_keeps_unlocked_copy(db_conn):
-    account_id = await db.upsert_account(db_conn, "ea", "ea", {})
-    linked_id = await db.upsert_linked_account(db_conn, "ea", "ea")
+    user = await db.create_user(db_conn, "parent", "x")
+    linked_id = await db.upsert_linked_account(db_conn, user["id"], "ea", "ea")
     pg_id = await db.upsert_platform_game(db_conn, "ea", "a-way-out-origin", "A Way Out", None, 14)
 
     # Two duplicate rows for the same real achievement (different platform_ach_id),

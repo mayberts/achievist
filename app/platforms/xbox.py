@@ -55,7 +55,7 @@ class XboxPlatform(Platform):
 
         # Always key data by XUID so the same person added via sign-in and/or a
         # gamertag collapses into one account instead of duplicating the library.
-        linked_id = await db.upsert_linked_account(conn, "xbox", xuid)
+        linked_id = await db.upsert_linked_account(conn, account["user_id"], "xbox", xuid)
         earned_cache = await db.get_earned_counts(conn, linked_id)
 
         async with httpx.AsyncClient(timeout=30) as client:

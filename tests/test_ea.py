@@ -26,6 +26,7 @@ async def test_missing_exophase_config_raises(monkeypatch):
 async def test_sync_upserts_games_and_achievements(monkeypatch, db_conn):
     monkeypatch.setattr(config, "EXOPHASE_PLAYER_ID", "123")
     monkeypatch.setattr(config, "EXOPHASE_ACCESS_TOKEN", "tok")
+    user = await db.create_user(db_conn, "parent", "x")
 
     async def fake_games(client, player_id, access_token, environment):
         assert environment == "origin"
@@ -53,10 +54,10 @@ async def test_sync_upserts_games_and_achievements(monkeypatch, db_conn):
     monkeypatch.setattr(exophase_module, "fetch_game_page_awards", fake_awards)
     monkeypatch.setattr(exophase_module, "fetch_earned", fake_earned)
 
-    await EAPlatform().sync({"external_id": "ea"}, db_conn)
+    await EAPlatform().sync({"external_id": "ea", "user_id": user["id"]}, db_conn)
     await db_conn.commit()
 
-    linked_id = await db.upsert_linked_account(db_conn, "ea", "ea")
+    linked_id = await db.upsert_linked_account(db_conn, user["id"], "ea", "ea")
     row = await db._fetchrow(
         db_conn,
         "SELECT ug.earned_achievements, ug.total_achievements FROM user_games ug "

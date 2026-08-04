@@ -31,7 +31,7 @@ class GuildWars2Platform(Platform):
             raise RuntimeError("Guild Wars 2 not configured — set GW2_API_KEY")
 
         headers = {"Authorization": f"Bearer {api_key}"}
-        linked_id = await db.upsert_linked_account(conn, "guildwars2", account["external_id"])
+        linked_id = await db.upsert_linked_account(conn, account["user_id"], "guildwars2", account["external_id"])
         earned_cache = await db.get_earned_counts(conn, linked_id)
 
         async with httpx.AsyncClient(timeout=30) as client:

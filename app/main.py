@@ -36,9 +36,10 @@ _UNLOCK_EVENTS_MAX = 300
 _unlock_events: list[dict] = []
 
 
-def _record_unlock_events(rows: list[dict]) -> None:
+def _record_unlock_events(rows: list[dict], user_id: int) -> None:
     for r in rows:
         _unlock_events.append({
+            "user_id": user_id,
             "unlocked_at": r["unlocked_at"].isoformat(),
             "game_name": r["game_name"],
             "platform": r["platform"],
@@ -324,7 +325,7 @@ async def _sync_one_account(pool, account: dict) -> None:
             if account.get("id") and prev_synced_at:
                 try:
                     new_rows = await db.unlocks_since(conn, account["id"], prev_synced_at)
-                    _record_unlock_events(new_rows)
+                    _record_unlock_events(new_rows, account["user_id"])
                 except Exception:
                     log.exception("Failed to collect new-unlock events for %s", plat)
             if account.get("id"):
@@ -348,7 +349,12 @@ async def _sync_one_account(pool, account: dict) -> None:
                 )
 
 
-async def run_sync(account_id: int | None = None) -> None:
+async def run_sync(account_id: int | None = None, user_id: int | None = None) -> None:
+    """
+    Syncs every enabled account by default (the scheduled background job).
+    Pass user_id to scope a run to one logged-in user's own accounts (the
+    manual "Sync" button), or account_id for a single account.
+    """
     if _sync_lock.locked():
         log.info("Sync already running, skipping")
         return
@@ -360,8 +366,10 @@ async def run_sync(account_id: int | None = None) -> None:
 
         pool = await db.get_pool()
         async with pool.connection() as conn:
-            accounts = await db.list_accounts(conn)
+            accounts = await db.list_all_accounts(conn)
         accounts = [a for a in accounts if a.get("enabled", True)]
+        if user_id is not None:
+            accounts = [a for a in accounts if a["user_id"] == user_id]
         if account_id is not None:
             accounts = [a for a in accounts if a["id"] == account_id]
 
@@ -394,14 +402,22 @@ async def lifespan(app: FastAPI):
     # One-time migration: seed DB-backed accounts from any legacy .env config.
     # Only fills in platforms that don't already have a connected account, so
     # credentials edited in the UI are never overwritten by stale env values.
-    for seed in config.env_seed_accounts():
+    # Env vars are server-level config (the operator's own credentials), so
+    # these attach to the first admin account — skipped entirely if no admin
+    # exists yet (a brand new install where first-run setup hasn't happened).
+    env_seeds = config.env_seed_accounts()
+    if env_seeds:
         async with pool.connection() as conn:
-            if not await db.account_exists(conn, seed["platform"]):
-                await db.upsert_account(
-                    conn, seed["platform"], seed["external_id"],
-                    seed["credentials"], seed.get("display_name"),
-                )
-                log.info("Seeded %s account from environment", seed["platform"])
+            admin = await _fetchrow(conn, "SELECT id FROM users WHERE is_admin ORDER BY id LIMIT 1")
+        if admin:
+            for seed in env_seeds:
+                async with pool.connection() as conn:
+                    if not await db.account_exists(conn, admin["id"], seed["platform"]):
+                        await db.upsert_account(
+                            conn, admin["id"], seed["platform"], seed["external_id"],
+                            seed["credentials"], seed.get("display_name"),
+                        )
+                        log.info("Seeded %s account from environment", seed["platform"])
 
     asyncio.create_task(run_sync())
     asyncio.create_task(_enrich_hltb())
@@ -546,23 +562,22 @@ async def delete_user_account(user_id: int, admin: dict = Depends(require_admin)
 
 
 @app.get("/api/profile")
-async def get_profile():
-    pool = await db.get_pool()
-    async with pool.connection() as conn:
-        return await db.get_profile(conn)
+async def get_profile(user: dict = Depends(require_user)):
+    return {"display_name": user["display_name"], "avatar_url": user["avatar_url"]}
 
 
 @app.put("/api/profile")
-async def update_profile(payload: dict):
+async def update_profile(payload: dict, user: dict = Depends(require_user)):
     display_name = (payload.get("display_name") or "").strip() or None
     avatar_url = (payload.get("avatar_url") or "").strip() or None
     pool = await db.get_pool()
     async with pool.connection() as conn:
-        return await db.update_profile(conn, display_name, avatar_url)
+        await db.update_user_profile(conn, user["id"], display_name, avatar_url)
+    return {"display_name": display_name, "avatar_url": avatar_url}
 
 
 @app.get("/api/summary")
-async def summary():
+async def summary(user: dict = Depends(require_user)):
     pool = await db.get_pool()
     async with pool.connection() as conn:
         row = await _fetchrow(
@@ -578,7 +593,10 @@ async def summary():
                      ELSE 0 END                          AS overall_pct,
                 COUNT(*) FILTER (WHERE ug.completion_pct = 100) AS perfect_games
             FROM user_games ug
+            JOIN linked_accounts la ON la.id = ug.linked_account_id
+            WHERE la.user_id = %s
             """,
+            user["id"],
         )
         by_platform = await _fetch(
             conn,
@@ -595,17 +613,22 @@ async def summary():
                 SUM(ug.playtime_minutes)                 AS total_playtime_minutes
             FROM user_games ug
             JOIN platform_games pg ON pg.id = ug.platform_game_id
+            JOIN linked_accounts la ON la.id = ug.linked_account_id
+            WHERE la.user_id = %s
             GROUP BY pg.platform
             """,
+            user["id"],
         )
         last_synced = await _fetch(
             conn,
             """
-            SELECT platform, MAX(finished_at) AS last_sync
-            FROM sync_runs
-            WHERE status = 'ok'
-            GROUP BY platform
+            SELECT sr.platform, MAX(sr.finished_at) AS last_sync
+            FROM sync_runs sr
+            JOIN linked_accounts la ON la.id = sr.linked_account_id
+            WHERE sr.status = 'ok' AND la.user_id = %s
+            GROUP BY sr.platform
             """,
+            user["id"],
         )
     last_synced_map = {r["platform"]: r["last_sync"] for r in last_synced}
     platform_list = [
@@ -633,6 +656,7 @@ async def games(
     completion: str | None = Query(None, pattern="^(completed|in_progress|not_started)$"),
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=200),
+    user: dict = Depends(require_user),
 ):
     # Every ordering ends with pg.id as a tiebreaker so paginated results are
     # stable even when many rows share the same sort value (e.g. identical
@@ -645,8 +669,8 @@ async def games(
         "name": "pg.name ASC, pg.id",
     }[sort]
 
-    filters = ["ug.total_achievements > 0"]
-    params: list = []
+    filters = ["ug.total_achievements > 0", "la.user_id = %s"]
+    params: list = [user["id"]]
 
     if platform:
         filters.append("pg.platform = %s")
@@ -672,6 +696,7 @@ async def games(
             SELECT COUNT(*) AS cnt
             FROM user_games ug
             JOIN platform_games pg ON pg.id = ug.platform_game_id
+            JOIN linked_accounts la ON la.id = ug.linked_account_id
             {where}
             """,
             *params,
@@ -695,6 +720,7 @@ async def games(
                 ug.last_played_at
             FROM user_games ug
             JOIN platform_games pg ON pg.id = ug.platform_game_id
+            JOIN linked_accounts la ON la.id = ug.linked_account_id
             LEFT JOIN igdb_games ig ON ig.id = pg.igdb_id AND pg.igdb_id > 0
             {where}
             ORDER BY {order}
@@ -729,6 +755,7 @@ async def achievements_search(
     sort: str = Query("rarity", pattern="^(rarity|name|points|unlocked_at)$"),
     page: int = Query(1, ge=1),
     page_size: int = Query(24, ge=1, le=200),
+    user: dict = Depends(require_user),
 ):
     """Search achievements across the whole library, not just within one game."""
     order = {
@@ -738,8 +765,12 @@ async def achievements_search(
         "unlocked_at": "ua.unlocked_at DESC NULLS LAST, a.id",
     }[sort]
 
+    # Both the JOIN's "la.user_id = %s" and any filter placeholders below are
+    # interpolated into the same query string, so this param must come first
+    # to match its position in the SQL text (right after the games-I-own
+    # join, before the WHERE filters).
     filters = []
-    params: list = []
+    params: list = [user["id"]]
 
     if q:
         filters.append("(a.name ILIKE %s OR a.description ILIKE %s)")
@@ -765,7 +796,9 @@ async def achievements_search(
             SELECT COUNT(*) AS cnt
             FROM achievements a
             JOIN platform_games pg ON pg.id = a.platform_game_id
-            LEFT JOIN user_achievements ua ON ua.achievement_id = a.id
+            JOIN user_games ug ON ug.platform_game_id = pg.id
+            JOIN linked_accounts la ON la.id = ug.linked_account_id AND la.user_id = %s
+            LEFT JOIN user_achievements ua ON ua.achievement_id = a.id AND ua.linked_account_id = la.id
             {where}
             """,
             *params,
@@ -780,7 +813,9 @@ async def achievements_search(
                 pg.sgdb_cover_url, pg.icon_url AS game_icon_url
             FROM achievements a
             JOIN platform_games pg ON pg.id = a.platform_game_id
-            LEFT JOIN user_achievements ua ON ua.achievement_id = a.id
+            JOIN user_games ug ON ug.platform_game_id = pg.id
+            JOIN linked_accounts la ON la.id = ug.linked_account_id AND la.user_id = %s
+            LEFT JOIN user_achievements ua ON ua.achievement_id = a.id AND ua.linked_account_id = la.id
             {where}
             ORDER BY {order}
             LIMIT %s OFFSET %s
@@ -797,7 +832,7 @@ async def achievements_search(
 
 
 @app.get("/api/games/{platform_game_id}")
-async def game_detail(platform_game_id: int):
+async def game_detail(platform_game_id: int, user: dict = Depends(require_user)):
     pool = await db.get_pool()
     async with pool.connection() as conn:
         row = await _fetchrow(
@@ -815,6 +850,7 @@ async def game_detail(platform_game_id: int):
                 pg.hltb_extra,
                 pg.hltb_complete,
                 ig.cover_url        AS igdb_cover_url,
+                ug.linked_account_id,
                 ug.playtime_minutes,
                 ug.earned_achievements,
                 ug.total_achievements,
@@ -822,11 +858,14 @@ async def game_detail(platform_game_id: int):
                 ug.last_played_at
             FROM user_games ug
             JOIN platform_games pg ON pg.id = ug.platform_game_id
+            JOIN linked_accounts la ON la.id = ug.linked_account_id AND la.user_id = %s
             LEFT JOIN igdb_games ig ON ig.id = pg.igdb_id AND pg.igdb_id > 0
             WHERE pg.id = %s
             """,
-            platform_game_id,
+            user["id"], platform_game_id,
         )
+        if not row:
+            raise HTTPException(status_code=404, detail="Game not found")
         rarity_summary = await _fetch(
             conn,
             """
@@ -840,7 +879,8 @@ async def game_detail(platform_game_id: int):
                 END AS tier
                 FROM user_achievements ua
                 JOIN achievements a ON a.id = ua.achievement_id
-                WHERE a.platform_game_id = %s AND ua.unlocked = true AND a.rarity_pct IS NOT NULL
+                WHERE a.platform_game_id = %s AND ua.linked_account_id = %s
+                  AND ua.unlocked = true AND a.rarity_pct IS NOT NULL
             ) sub GROUP BY tier ORDER BY MIN(
                 CASE tier
                     WHEN 'Legendary' THEN 1 WHEN 'Epic' THEN 2
@@ -848,7 +888,7 @@ async def game_detail(platform_game_id: int):
                 END
             )
             """,
-            platform_game_id,
+            platform_game_id, row["linked_account_id"],
         )
         points_row = await _fetchrow(
             conn,
@@ -856,9 +896,10 @@ async def game_detail(platform_game_id: int):
             SELECT SUM(a.points) AS total_points
             FROM user_achievements ua
             JOIN achievements a ON a.id = ua.achievement_id
-            WHERE a.platform_game_id = %s AND ua.unlocked = true AND a.points IS NOT NULL
+            WHERE a.platform_game_id = %s AND ua.linked_account_id = %s
+              AND ua.unlocked = true AND a.points IS NOT NULL
             """,
-            platform_game_id,
+            platform_game_id, row["linked_account_id"],
         )
     if not row:
         raise HTTPException(status_code=404, detail="Game not found")
@@ -869,7 +910,7 @@ async def game_detail(platform_game_id: int):
 
 
 @app.get("/api/statistics")
-async def statistics():
+async def statistics(user: dict = Depends(require_user)):
     pool = await db.get_pool()
     try:
         async with pool.connection() as conn:
@@ -886,30 +927,36 @@ async def statistics():
                     ROUND(SUM(ug.earned_achievements)::numeric
                           / NULLIF(SUM(ug.total_achievements), 0) * 100, 2)             AS absolute_completion
                 FROM user_games ug
+                JOIN linked_accounts la ON la.id = ug.linked_account_id AND la.user_id = %s
                 WHERE ug.total_achievements > 0
                 """,
+                user["id"],
             )
 
             daily_max = await _fetchrow(
                 conn,
                 """
                 SELECT COUNT(*) AS cnt
-                FROM user_achievements
-                WHERE unlocked = true AND unlocked_at IS NOT NULL
-                GROUP BY unlocked_at::date
+                FROM user_achievements ua
+                JOIN linked_accounts la ON la.id = ua.linked_account_id AND la.user_id = %s
+                WHERE ua.unlocked = true AND ua.unlocked_at IS NOT NULL
+                GROUP BY ua.unlocked_at::date
                 ORDER BY cnt DESC LIMIT 1
                 """,
+                user["id"],
             )
 
             monthly_max = await _fetchrow(
                 conn,
                 """
                 SELECT COUNT(*) AS cnt
-                FROM user_achievements
-                WHERE unlocked = true AND unlocked_at IS NOT NULL
-                GROUP BY DATE_TRUNC('month', unlocked_at)
+                FROM user_achievements ua
+                JOIN linked_accounts la ON la.id = ua.linked_account_id AND la.user_id = %s
+                WHERE ua.unlocked = true AND ua.unlocked_at IS NOT NULL
+                GROUP BY DATE_TRUNC('month', ua.unlocked_at)
                 ORDER BY cnt DESC LIMIT 1
                 """,
+                user["id"],
             )
 
             rarity_rows = await _fetch(
@@ -928,11 +975,13 @@ async def statistics():
                         a.rarity_pct
                     FROM user_achievements ua
                     JOIN achievements a ON a.id = ua.achievement_id
+                    JOIN linked_accounts la ON la.id = ua.linked_account_id AND la.user_id = %s
                     WHERE ua.unlocked = true AND a.rarity_pct IS NOT NULL
                 ) sub
                 GROUP BY tier
                 ORDER BY MIN(rarity_pct)
                 """,
+                user["id"],
             )
 
             completion_dist = await _fetch(
@@ -942,17 +991,20 @@ async def statistics():
                 FROM (
                     SELECT
                         CASE
-                            WHEN completion_pct = 0         THEN '0%%'
-                            WHEN completion_pct <= 25       THEN '1-25%%'
-                            WHEN completion_pct <= 50       THEN '25-50%%'
-                            WHEN completion_pct <= 75       THEN '50-75%%'
-                            WHEN completion_pct < 100       THEN '75-99%%'
+                            WHEN ug.completion_pct = 0         THEN '0%%'
+                            WHEN ug.completion_pct <= 25       THEN '1-25%%'
+                            WHEN ug.completion_pct <= 50       THEN '25-50%%'
+                            WHEN ug.completion_pct <= 75       THEN '50-75%%'
+                            WHEN ug.completion_pct < 100       THEN '75-99%%'
                             ELSE '100%%'
                         END AS bracket
-                    FROM user_games WHERE total_achievements > 0
+                    FROM user_games ug
+                    JOIN linked_accounts la ON la.id = ug.linked_account_id AND la.user_id = %s
+                    WHERE ug.total_achievements > 0
                 ) sub
                 GROUP BY bracket
                 """,
+                user["id"],
             )
 
             platform_rows = await _fetch(
@@ -961,50 +1013,59 @@ async def statistics():
                 SELECT pg.platform, SUM(ug.earned_achievements) AS earned
                 FROM user_games ug
                 JOIN platform_games pg ON pg.id = ug.platform_game_id
+                JOIN linked_accounts la ON la.id = ug.linked_account_id AND la.user_id = %s
                 GROUP BY pg.platform
                 """,
+                user["id"],
             )
 
             progression = await _fetch(
                 conn,
                 """
-                SELECT DATE_TRUNC('month', unlocked_at)::date AS month, COUNT(*) AS cnt
-                FROM user_achievements
-                WHERE unlocked = true AND unlocked_at IS NOT NULL
-                GROUP BY DATE_TRUNC('month', unlocked_at)::date
-                ORDER BY DATE_TRUNC('month', unlocked_at)::date
+                SELECT DATE_TRUNC('month', ua.unlocked_at)::date AS month, COUNT(*) AS cnt
+                FROM user_achievements ua
+                JOIN linked_accounts la ON la.id = ua.linked_account_id AND la.user_id = %s
+                WHERE ua.unlocked = true AND ua.unlocked_at IS NOT NULL
+                GROUP BY DATE_TRUNC('month', ua.unlocked_at)::date
+                ORDER BY DATE_TRUNC('month', ua.unlocked_at)::date
                 """,
+                user["id"],
             )
 
             best_day_row = await _fetchrow(
                 conn,
                 """
-                SELECT unlocked_at::date AS day, COUNT(*) AS cnt
-                FROM user_achievements
-                WHERE unlocked = true AND unlocked_at IS NOT NULL
-                GROUP BY unlocked_at::date
+                SELECT ua.unlocked_at::date AS day, COUNT(*) AS cnt
+                FROM user_achievements ua
+                JOIN linked_accounts la ON la.id = ua.linked_account_id AND la.user_id = %s
+                WHERE ua.unlocked = true AND ua.unlocked_at IS NOT NULL
+                GROUP BY ua.unlocked_at::date
                 ORDER BY cnt DESC LIMIT 1
                 """,
+                user["id"],
             )
 
             best_month_row = await _fetchrow(
                 conn,
                 """
-                SELECT DATE_TRUNC('month', unlocked_at)::date AS month, COUNT(*) AS cnt
-                FROM user_achievements
-                WHERE unlocked = true AND unlocked_at IS NOT NULL
-                GROUP BY DATE_TRUNC('month', unlocked_at)::date
+                SELECT DATE_TRUNC('month', ua.unlocked_at)::date AS month, COUNT(*) AS cnt
+                FROM user_achievements ua
+                JOIN linked_accounts la ON la.id = ua.linked_account_id AND la.user_id = %s
+                WHERE ua.unlocked = true AND ua.unlocked_at IS NOT NULL
+                GROUP BY DATE_TRUNC('month', ua.unlocked_at)::date
                 ORDER BY cnt DESC LIMIT 1
                 """,
+                user["id"],
             )
 
             streak_row = await _fetchrow(
                 conn,
                 """
                 WITH daily AS (
-                    SELECT DISTINCT unlocked_at::date AS day
-                    FROM user_achievements
-                    WHERE unlocked = true AND unlocked_at IS NOT NULL
+                    SELECT DISTINCT ua.unlocked_at::date AS day
+                    FROM user_achievements ua
+                    JOIN linked_accounts la ON la.id = ua.linked_account_id AND la.user_id = %s
+                    WHERE ua.unlocked = true AND ua.unlocked_at IS NOT NULL
                 ),
                 grouped AS (
                     SELECT day, day - (ROW_NUMBER() OVER (ORDER BY day))::int AS grp
@@ -1017,6 +1078,7 @@ async def statistics():
                 )
                 SELECT start, finish, days FROM streaks ORDER BY days DESC LIMIT 1
                 """,
+                user["id"],
             )
 
         cum, total = [], 0
@@ -1056,7 +1118,7 @@ async def statistics():
 
 
 @app.get("/api/activity")
-async def activity():
+async def activity(user: dict = Depends(require_user)):
     """Unlock heatmap, streaks, total playtime, and a recent-activity feed."""
     from datetime import date, timedelta
 
@@ -1065,16 +1127,21 @@ async def activity():
         heatmap_rows = await _fetch(
             conn,
             """
-            SELECT unlocked_at::date AS day, COUNT(*) AS cnt
-            FROM user_achievements
-            WHERE unlocked = true AND unlocked_at IS NOT NULL
-              AND unlocked_at >= now() - interval '53 weeks'
-            GROUP BY unlocked_at::date
+            SELECT ua.unlocked_at::date AS day, COUNT(*) AS cnt
+            FROM user_achievements ua
+            JOIN linked_accounts la ON la.id = ua.linked_account_id AND la.user_id = %s
+            WHERE ua.unlocked = true AND ua.unlocked_at IS NOT NULL
+              AND ua.unlocked_at >= now() - interval '53 weeks'
+            GROUP BY ua.unlocked_at::date
             ORDER BY day
             """,
+            user["id"],
         )
         playtime_row = await _fetchrow(
-            conn, "SELECT COALESCE(SUM(playtime_minutes), 0) AS total FROM user_games"
+            conn,
+            "SELECT COALESCE(SUM(ug.playtime_minutes), 0) AS total FROM user_games ug "
+            "JOIN linked_accounts la ON la.id = ug.linked_account_id AND la.user_id = %s",
+            user["id"],
         )
         feed_rows = await _fetch(
             conn,
@@ -1087,6 +1154,7 @@ async def activity():
             FROM user_achievements ua
             JOIN achievements a ON a.id = ua.achievement_id
             JOIN platform_games pg ON pg.id = a.platform_game_id
+            JOIN linked_accounts la ON la.id = ua.linked_account_id AND la.user_id = %s
             LEFT JOIN igdb_games ig ON ig.id = pg.igdb_id AND pg.igdb_id > 0
             WHERE ua.unlocked = true AND ua.unlocked_at IS NOT NULL
             GROUP BY pg.id, pg.name, pg.platform, pg.icon_url, pg.sgdb_cover_url,
@@ -1094,6 +1162,7 @@ async def activity():
             ORDER BY ua.unlocked_at::date DESC, cnt DESC
             LIMIT 40
             """,
+            user["id"],
         )
 
     # Streaks from distinct unlock days.
@@ -1135,7 +1204,7 @@ async def activity():
 
 
 @app.get("/api/statistics/platform/{platform}")
-async def statistics_platform(platform: str):
+async def statistics_platform(platform: str, user: dict = Depends(require_user)):
     """Top games by completion for a platform, for the drilldown modal."""
     pool = await db.get_pool()
     async with pool.connection() as conn:
@@ -1149,18 +1218,19 @@ async def statistics_platform(platform: str):
                    ug.earned_achievements, ug.total_achievements, ug.completion_pct
             FROM user_games ug
             JOIN platform_games pg ON pg.id = ug.platform_game_id
+            JOIN linked_accounts la ON la.id = ug.linked_account_id AND la.user_id = %s
             LEFT JOIN igdb_games ig ON ig.id = pg.igdb_id AND pg.igdb_id > 0
             WHERE pg.platform = %s AND ug.total_achievements > 0
             ORDER BY ug.earned_achievements DESC
             LIMIT 50
             """,
-            platform,
+            user["id"], platform,
         )
     return [dict(r) for r in rows]
 
 
 @app.get("/api/games/{platform_game_id}/achievements")
-async def game_achievements(platform_game_id: int):
+async def game_achievements(platform_game_id: int, user: dict = Depends(require_user)):
     pool = await db.get_pool()
     async with pool.connection() as conn:
         rows = await _fetch(
@@ -1176,11 +1246,13 @@ async def game_achievements(platform_game_id: int):
                 ua.unlocked,
                 ua.unlocked_at
             FROM achievements a
-            LEFT JOIN user_achievements ua ON ua.achievement_id = a.id
+            JOIN user_games ug ON ug.platform_game_id = a.platform_game_id
+            JOIN linked_accounts la ON la.id = ug.linked_account_id AND la.user_id = %s
+            LEFT JOIN user_achievements ua ON ua.achievement_id = a.id AND ua.linked_account_id = la.id
             WHERE a.platform_game_id = %s
             ORDER BY ua.unlocked DESC NULLS LAST, a.name
             """,
-            platform_game_id,
+            user["id"], platform_game_id,
         )
     return [dict(r) for r in rows]
 
@@ -1531,28 +1603,34 @@ async def sgdb_set(platform_game_id: int, url: str):
 
 
 @app.get("/api/sync/progress")
-async def sync_progress():
+async def sync_progress(user: dict = Depends(require_user)):
+    # Not scoped per-user: this reflects whatever background sync is
+    # currently running (which could be another family member's, or the
+    # scheduled all-accounts job), not just this user's. Acceptable for
+    # now — it only exposes platform names and progress counts, not
+    # account data — but a genuinely per-user progress view would need its
+    # own tracking structure rather than this single global dict.
     return _sync_progress
 
 
 @app.get("/api/unlocks/recent")
-async def recent_unlocks(since: str = ""):
+async def recent_unlocks(since: str = "", user: dict = Depends(require_user)):
     """
     Achievement-unlock events collected during syncs, for the frontend to
     poll and toast. Pass `since` back as the `unlocked_at` of the last event
     you've already shown; omit it to get the most recent handful.
     """
-    events = _unlock_events
+    events = [e for e in _unlock_events if e["user_id"] == user["id"]]
     if since:
         events = [e for e in events if e["unlocked_at"] > since]
     return {"events": events[-15:]}
 
 
 @app.post("/api/sync", status_code=202)
-async def trigger_sync():
+async def trigger_sync(user: dict = Depends(require_user)):
     if _sync_lock.locked():
         raise HTTPException(status_code=409, detail="Sync already in progress")
-    asyncio.create_task(run_sync())
+    asyncio.create_task(run_sync(user_id=user["id"]))
     return {"status": "started"}
 
 
@@ -1561,7 +1639,7 @@ async def trigger_sync():
 # credentials alike — lives in Postgres, so a pg_dump backup covers all of it.
 
 @app.get("/api/backups")
-async def get_backups():
+async def get_backups(admin: dict = Depends(require_admin)):
     return {
         "backups": backup.list_backups(),
         "keep_count": config.BACKUP_KEEP_COUNT,
@@ -1570,7 +1648,7 @@ async def get_backups():
 
 
 @app.post("/api/backups", status_code=201)
-async def create_backup_now():
+async def create_backup_now(admin: dict = Depends(require_admin)):
     try:
         path = await backup.create_backup()
     except RuntimeError as e:
@@ -1579,7 +1657,7 @@ async def create_backup_now():
 
 
 @app.get("/api/backups/{filename}")
-async def download_backup(filename: str):
+async def download_backup(filename: str, admin: dict = Depends(require_admin)):
     try:
         path = backup.resolve_backup_path(filename)
     except ValueError:
@@ -1590,7 +1668,7 @@ async def download_backup(filename: str):
 
 
 @app.delete("/api/backups/{filename}", status_code=204)
-async def remove_backup(filename: str):
+async def remove_backup(filename: str, admin: dict = Depends(require_admin)):
     try:
         backup.delete_backup(filename)
     except ValueError:
@@ -1631,17 +1709,17 @@ async def list_platforms():
 
 
 @app.get("/api/accounts")
-async def list_accounts():
+async def list_accounts(user: dict = Depends(require_user)):
     pool = await db.get_pool()
     async with pool.connection() as conn:
-        rows = await db.list_accounts(conn)
+        rows = await db.list_accounts(conn, user["id"])
     return [_redact_account(r) for r in rows]
 
 
 @app.post("/api/accounts", status_code=201)
-async def connect_account(payload: dict):
+async def connect_account(payload: dict, user: dict = Depends(require_user)):
     """
-    Connect (or update) an account.
+    Connect (or update) an account for the logged-in user.
     Body: {"platform": "steam", "external_id": "...", "credentials": {...}}
     For fixed-identity platforms (gw2, xbox, ubisoft) external_id is optional.
     """
@@ -1669,7 +1747,7 @@ async def connect_account(payload: dict):
     pool = await db.get_pool()
     async with pool.connection() as conn:
         # Merge with any existing credentials so editing one field doesn't wipe the rest.
-        existing = await db.get_account_by_key(conn, platform, str(external_id))
+        existing = await db.get_account_by_key(conn, user["id"], platform, str(external_id))
         merged = {**(existing["credentials"] if existing else {}), **creds}
 
         # Validate required fields against the merged result (skip external_id).
@@ -1679,29 +1757,29 @@ async def connect_account(payload: dict):
             if field.get("required") and not merged.get(field["name"]):
                 raise HTTPException(status_code=400, detail=f"Missing required field: {field['label']}")
 
-        await db.delete_other_accounts_for_platform(conn, platform, str(external_id))
-        account_id = await db.upsert_account(conn, platform, str(external_id), merged)
+        await db.delete_other_accounts_for_platform(conn, user["id"], platform, str(external_id))
+        account_id = await db.upsert_account(conn, user["id"], platform, str(external_id), merged)
     return {"id": account_id, "status": "connected"}
 
 
 @app.delete("/api/accounts/{account_id}", status_code=204)
-async def disconnect_account(account_id: int):
+async def disconnect_account(account_id: int, user: dict = Depends(require_user)):
     pool = await db.get_pool()
     async with pool.connection() as conn:
-        acct = await db.get_account(conn, account_id)
+        acct = await db.get_account(conn, account_id, user["id"])
         if not acct:
             raise HTTPException(status_code=404, detail="Account not found")
-        await db.delete_account(conn, account_id)
+        await db.delete_account(conn, account_id, user["id"])
     return None
 
 
 @app.post("/api/accounts/{account_id}/sync", status_code=202)
-async def sync_account(account_id: int):
+async def sync_account(account_id: int, user: dict = Depends(require_user)):
     if _sync_lock.locked():
         raise HTTPException(status_code=409, detail="Sync already in progress")
     pool = await db.get_pool()
     async with pool.connection() as conn:
-        acct = await db.get_account(conn, account_id)
+        acct = await db.get_account(conn, account_id, user["id"])
     if not acct:
         raise HTTPException(status_code=404, detail="Account not found")
     asyncio.create_task(run_sync(account_id=account_id))
@@ -1709,10 +1787,11 @@ async def sync_account(account_id: int):
 
 
 @app.post("/api/xbox-dedup")
-async def xbox_dedup():
+async def xbox_dedup(user: dict = Depends(require_user)):
     """
-    Consolidate duplicate Xbox accounts: keep the linked account with the most
-    stored games and delete the others (removes duplicate library entries).
+    Consolidate this user's duplicate Xbox accounts: keep the linked account
+    with the most stored games and delete the others (removes duplicate
+    library entries).
     """
     pool = await db.get_pool()
     async with pool.connection() as conn:
@@ -1722,17 +1801,18 @@ async def xbox_dedup():
             SELECT la.id, la.external_id, COUNT(ug.id) AS games
             FROM linked_accounts la
             LEFT JOIN user_games ug ON ug.linked_account_id = la.id
-            WHERE la.platform = 'xbox'
+            WHERE la.platform = 'xbox' AND la.user_id = %s
             GROUP BY la.id, la.external_id
             ORDER BY games DESC
             """,
+            user["id"],
         )
         if len(rows) <= 1:
             return {"status": "ok", "removed": 0, "kept": rows[0]["external_id"] if rows else None}
         keep = rows[0]
         removed = []
         for r in rows[1:]:
-            await db.delete_account(conn, r["id"])
+            await db.delete_account(conn, r["id"], user["id"])
             removed.append(r["external_id"])
     return {"status": "ok", "kept": keep["external_id"], "kept_games": keep["games"], "removed": removed}
 

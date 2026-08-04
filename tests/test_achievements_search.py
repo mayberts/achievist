@@ -1,6 +1,8 @@
 """
 Integration tests for GET /api/achievements/search — searches/filters
-achievements across the whole library, not just within one game.
+achievements across the whole library, not just within one game. Requires
+login and only returns achievements for games in the logged-in user's own
+library (joined through user_games/linked_accounts).
 """
 
 from datetime import datetime, timezone
@@ -8,7 +10,7 @@ from datetime import datetime, timezone
 import httpx
 import pytest
 
-from app import db
+from app import auth, db
 from app.main import app
 from tests.conftest import requires_db
 
@@ -16,17 +18,23 @@ pytestmark = requires_db
 
 
 @pytest.fixture
-async def client():
+async def client(db_conn):
+    await db.create_user(db_conn, "parent", auth.hash_password("parentpassword1"), is_admin=True)
+    await db_conn.commit()
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+        await c.post("/api/auth/login", json={"username": "parent", "password": "parentpassword1"})
         yield c
 
 
 async def _seed(db_conn):
     """One steam account, two games, achievements spanning every rarity tier."""
-    account_id = await db.upsert_account(db_conn, "steam", "111", {})
+    user = await db.get_user_by_username(db_conn, "parent")
+    account_id = await db.upsert_account(db_conn, user["id"], "steam", "111", {})
     game1 = await db.upsert_platform_game(db_conn, "steam", "1", "Borderlands", None, 3)
     game2 = await db.upsert_platform_game(db_conn, "xbox", "2", "Halo", None, 1)
+    await db.upsert_user_game(db_conn, account_id, game1, 0, 2, 3)
+    await db.upsert_user_game(db_conn, account_id, game2, 0, 0, 1)
 
     achs = [
         (game1, "a1", "Legendary Feat", "so rare", 1.0, True),
@@ -100,3 +108,18 @@ async def test_search_pagination(db_conn, client):
     data = resp.json()
     assert data["total"] == 4
     assert len(data["achievements"]) == 2
+
+
+async def test_search_excludes_other_users_games(db_conn, client):
+    await _seed(db_conn)
+    other = await db.create_user(db_conn, "kid", auth.hash_password("kidpassword1"))
+    other_account = await db.upsert_account(db_conn, other["id"], "steam", "222", {})
+    other_game = await db.upsert_platform_game(db_conn, "steam", "99", "Kid's Game", None, 1)
+    await db.upsert_user_game(db_conn, other_account, other_game, 0, 0, 1)
+    a = await db.upsert_achievement(db_conn, other_game, "b1", "Not Mine", "d", None, 10, 50.0)
+    await db.upsert_user_achievement(db_conn, other_account, a, False, None)
+    await db_conn.commit()
+
+    resp = await client.get("/api/achievements/search")
+    names = {a["name"] for a in resp.json()["achievements"]}
+    assert "Not Mine" not in names

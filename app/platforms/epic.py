@@ -65,7 +65,7 @@ class EpicPlatform(Platform):
         delay = config.REQUEST_DELAY_SECONDS
         headers = {**_HEADERS, "Referer": f"https://store.epicgames.com/u/{account_id}"}
 
-        linked_id = await db.upsert_linked_account(conn, "epic", account_id)
+        linked_id = await db.upsert_linked_account(conn, account["user_id"], "epic", account_id)
         earned_cache = await db.get_earned_counts(conn, linked_id)
 
         async with httpx.AsyncClient(timeout=30) as client:
