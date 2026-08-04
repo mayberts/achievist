@@ -375,6 +375,38 @@ def _to_float(val) -> float | None:
         return None
 
 
+async def _dedupe_stored_achievements(conn, platform_game_id: int) -> None:
+    """
+    Collapse achievement rows for a platform_game that share identical
+    (name, description) — leftover from before _dedupe_awards() existed, so
+    already-synced games would otherwise keep their stale duplicates
+    forever (the incremental-sync cache skips re-scraping once counts
+    already match, so fixed-forward dedupe logic never runs for them).
+    Keeps whichever duplicate has an unlocked record (if any), else the
+    lowest id; deletes the rest (user_achievements cascade-deletes with them).
+    """
+    await conn.execute(
+        """
+        WITH ranked AS (
+            SELECT a.id,
+                   ROW_NUMBER() OVER (
+                       PARTITION BY a.platform_game_id, a.name, a.description
+                       ORDER BY
+                           EXISTS (
+                               SELECT 1 FROM user_achievements ua
+                               WHERE ua.achievement_id = a.id AND ua.unlocked
+                           ) DESC,
+                           a.id ASC
+                   ) AS rn
+            FROM achievements a
+            WHERE a.platform_game_id = %s
+        )
+        DELETE FROM achievements WHERE id IN (SELECT id FROM ranked WHERE rn > 1)
+        """,
+        (platform_game_id,),
+    )
+
+
 async def sync_environment(worker, conn, platform_key: str, environment: str, account: dict) -> None:
     """
     Shared sync body for any platform whose real data comes from Exophase's
@@ -423,6 +455,12 @@ async def sync_environment(worker, conn, platform_key: str, environment: str, ac
         worker._inc("games_seen")
         pg_id = await db.upsert_platform_game(conn, platform_key, exo_slug, g["title"], g["cover"], total)
         await db.upsert_user_game(conn, linked_id, pg_id, 0, g["earned_awards"], total, None)
+
+        # One-time cleanup for rows stored before _dedupe_awards() existed —
+        # runs unconditionally (cheap, no network) even when the cache below
+        # would otherwise skip this game entirely, since a skipped game never
+        # reaches the dedupe logic and would keep its stale duplicates forever.
+        await _dedupe_stored_achievements(conn, pg_id)
 
         cached = earned_cache.get(exo_slug)
         if cached and cached["earned"] == g["earned_awards"] and cached["stored"] >= total > 0:
