@@ -35,17 +35,22 @@ async def test_sync_upserts_games_and_achievements(monkeypatch, db_conn):
             "exo_slug": "battlefield-x-origin", "page_type": "achievements",
         }]
 
-    async def fake_icons(exo_slug, page_type="achievements"):
+    async def fake_awards(exo_slug, page_type="achievements"):
         assert exo_slug == "battlefield-x-origin"
         assert page_type == "achievements"
-        return {"first-blood": "https://cdn/first-blood.png", "ace": "https://cdn/ace.png"}
+        return [
+            {"slug": "first-blood", "name": "First Blood", "description": "Get a kill",
+             "icon": "https://cdn/first-blood.png", "points": "10", "rarity_pct": "45.5", "locked": False},
+            {"slug": "ace", "name": "Ace", "description": "Win a round",
+             "icon": "https://cdn/ace.png", "points": "20", "rarity_pct": "5.0", "locked": True},
+        ]
 
     async def fake_earned(master_playerid, game_id):
         assert (master_playerid, game_id) == (999, 1)
         return {"first-blood": {"timestamp": 1704067200, "icon": "https://cdn/first-blood-earned.png"}}
 
     monkeypatch.setattr(exophase_module, "fetch_environment_games", fake_games)
-    monkeypatch.setattr(exophase_module, "fetch_game_page_icons", fake_icons)
+    monkeypatch.setattr(exophase_module, "fetch_game_page_awards", fake_awards)
     monkeypatch.setattr(exophase_module, "fetch_earned", fake_earned)
 
     await EAPlatform().sync({"external_id": "ea"}, db_conn)

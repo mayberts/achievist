@@ -1,6 +1,7 @@
 import asyncio
 import re
 import logging
+from html.parser import HTMLParser
 
 import httpx
 
@@ -203,8 +204,131 @@ async def fetch_game_page_icons(exo_slug: str, page_type: str = "achievements") 
     return icons
 
 
+_HREF_ID_PREFIX_RE = re.compile(r"^\d+-(.+)$")
+
+
+class _AwardsPageParser(HTMLParser):
+    """
+    Parses an Exophase game achievements/challenges page. Each award is a
+    <li class="... [locked] ... award ..." data-master="" data-award-id=""
+    data-earned="" data-average="" data-points="">, containing a nested
+    <img class="award-image" src="">, a title <a href=".../{id}-{slug}">Name</a>
+    inside a div.award-title, and a description <p> inside div.award-description.
+
+    A regex was tried first but EA's tooltip attribute contains *unescaped*
+    inner HTML (e.g. data-tippy-content="<strong>Name</strong> <p>desc</p>"),
+    which breaks any `[^>]*` character class before it ever reaches the real
+    attributes — a real HTML parser sidesteps that entirely.
+    """
+
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.awards: list[dict] = []
+        self._cur: dict | None = None
+        self._div_depth = 0
+        self._title_depth: int | None = None
+        self._desc_depth: int | None = None
+        self._title_buf: list[str] = []
+        self._desc_buf: list[str] = []
+
+    def handle_starttag(self, tag, attrs):
+        d = dict(attrs)
+        classes = (d.get("class") or "").split()
+
+        if tag == "li" and "award" in classes:
+            self._cur = {
+                "award_id": d.get("data-award-id"),
+                "master_id": d.get("data-master"),
+                "locked": "locked" in classes,
+                "earned_raw": d.get("data-earned"),
+                "rarity_pct": d.get("data-average"),
+                "points": d.get("data-points"),
+                "icon": None,
+                "name": None,
+                "description": None,
+                "slug": None,
+            }
+            return
+        if self._cur is None:
+            return
+
+        if tag == "div":
+            self._div_depth += 1
+            if "award-title" in classes:
+                self._title_depth = self._div_depth
+            elif "award-description" in classes:
+                self._desc_depth = self._div_depth
+        elif tag == "img" and "award-image" in classes:
+            self._cur["icon"] = d.get("src")
+        elif tag == "a" and self._title_depth is not None:
+            m = _HREF_ID_PREFIX_RE.match((d.get("href") or "").rstrip("/").rsplit("/", 1)[-1])
+            if m:
+                self._cur["slug"] = m.group(1)
+
+    def handle_endtag(self, tag):
+        if tag == "div" and self._cur is not None:
+            if self._title_depth == self._div_depth:
+                self._cur["name"] = "".join(self._title_buf).strip()
+                self._title_buf = []
+                self._title_depth = None
+            if self._desc_depth == self._div_depth:
+                self._cur["description"] = "".join(self._desc_buf).strip()
+                self._desc_buf = []
+                self._desc_depth = None
+            self._div_depth -= 1
+        elif tag == "li" and self._cur is not None:
+            if self._cur.get("slug") and self._cur.get("name"):
+                self.awards.append(self._cur)
+            self._cur = None
+            self._div_depth = 0
+            self._title_depth = None
+            self._desc_depth = None
+            self._title_buf = []
+            self._desc_buf = []
+
+    def handle_data(self, data):
+        if self._title_depth is not None:
+            self._title_buf.append(data)
+        if self._desc_depth is not None:
+            self._desc_buf.append(data)
+
+
+async def fetch_game_page_awards(exo_slug: str, page_type: str = "achievements") -> list[dict]:
+    """
+    Scrape the Exophase game achievements/challenges page for every award
+    (locked and unlocked), with name/description/points/rarity_pct/icon —
+    much richer than fetch_game_page_icons(), which only recovers icons and
+    silently returns nothing at all on pages like EA's (see _AwardsPageParser).
+    """
+    url = f"https://www.exophase.com/game/{exo_slug}/{page_type}/"
+    async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
+        resp = await client.get(url, headers=_PAGE_HEADERS)
+    if resp.status_code != 200:
+        log.warning("Exophase game page HTTP %d for %s", resp.status_code, exo_slug)
+        return []
+
+    parser = _AwardsPageParser()
+    parser.feed(resp.text)
+    log.info("Exophase page scrape %s: %d awards", exo_slug, len(parser.awards))
+    return parser.awards
+
+
 def _humanize(slug: str) -> str:
     return slug.replace("-", " ").title()
+
+
+def _to_int(val) -> int | None:
+    try:
+        return int(float(val))
+    except (TypeError, ValueError):
+        return None
+
+
+def _to_float(val) -> float | None:
+    try:
+        return float(val)
+    except (TypeError, ValueError):
+        return None
 
 
 async def sync_environment(worker, conn, platform_key: str, environment: str, account: dict) -> None:
@@ -261,25 +385,28 @@ async def sync_environment(worker, conn, platform_key: str, environment: str, ac
             continue
 
         await asyncio.sleep(delay)
-        icons = await fetch_game_page_icons(exo_slug, g["page_type"] or "achievements")  # {name_slug: icon_url}
+        awards = await fetch_game_page_awards(exo_slug, g["page_type"] or "achievements")
+        awards_by_slug = {a["slug"]: a for a in awards if a.get("slug")}
         await asyncio.sleep(delay)
         earned = await fetch_earned(g["master_playerid"], g["master_id"])  # {slug: {timestamp, icon}}
 
-        # Union both slug sets: the page scrape may miss secret/hidden
-        # achievements that only appear once earned, and vice versa the
-        # earned feed's own slug is Exophase's canonical one (may differ
-        # slightly from our re-slugified tooltip name).
-        all_slugs = set(icons) | set(earned)
+        # Union both slug sets: the page scrape may in principle miss a
+        # secret achievement, and vice versa the earned feed's own slug is
+        # Exophase's canonical one (should match the page's href-derived
+        # slug, but don't assume every achievement shows up in both).
+        all_slugs = set(awards_by_slug) | set(earned)
         if not all_slugs:
             continue
 
         for slug in all_slugs:
             worker._inc("achievements_synced")
+            a = awards_by_slug.get(slug) or {}
             earned_info = earned.get(slug)
-            is_unlocked = earned_info is not None
-            icon = (earned_info or {}).get("icon") or icons.get(slug)
+            is_unlocked = earned_info is not None or a.get("locked") is False
+            icon = (earned_info or {}).get("icon") or a.get("icon")
             db_ach_id = await db.upsert_achievement(
-                conn, pg_id, slug, _humanize(slug), None, icon, None, None,
+                conn, pg_id, slug, a.get("name") or _humanize(slug), a.get("description"),
+                icon, _to_int(a.get("points")), _to_float(a.get("rarity_pct")),
             )
             await db.upsert_user_achievement(
                 conn, linked_id, db_ach_id, is_unlocked,
