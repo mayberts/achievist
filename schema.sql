@@ -1,5 +1,24 @@
--- Pantheon schema. Single-user, cross-platform achievement aggregator.
+-- Achievist schema. Multi-user, cross-platform achievement aggregator.
 -- Idempotent: safe to run on every startup.
+
+CREATE TABLE IF NOT EXISTS users (
+    id              SERIAL PRIMARY KEY,
+    username        TEXT UNIQUE NOT NULL,
+    password_hash   TEXT NOT NULL,
+    display_name    TEXT,
+    avatar_url      TEXT,
+    is_admin        BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS sessions (
+    token       TEXT PRIMARY KEY,
+    user_id     INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    expires_at  TIMESTAMPTZ NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
+CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions(expires_at);
 
 CREATE TABLE IF NOT EXISTS linked_accounts (
     id              SERIAL PRIMARY KEY,
@@ -18,6 +37,18 @@ CREATE TABLE IF NOT EXISTS linked_accounts (
 ALTER TABLE linked_accounts ADD COLUMN IF NOT EXISTS credentials JSONB NOT NULL DEFAULT '{}'::jsonb;
 ALTER TABLE linked_accounts ADD COLUMN IF NOT EXISTS status      TEXT DEFAULT 'connected';
 ALTER TABLE linked_accounts ADD COLUMN IF NOT EXISTS last_error  TEXT;
+
+-- Multi-user (in progress — see app/main.py's Auth section docstring):
+-- each linked account will belong to exactly one user rather than being
+-- shared globally. The column is added now, nullable and unused by any
+-- query yet, so this migration is safe to ship independently. The
+-- (platform, external_id) unique constraint above is deliberately left
+-- alone for now: swapping it to (user_id, platform, external_id) has to
+-- land together with the db.py call-site changes that supply a real
+-- user_id (upsert_linked_account/upsert_account's ON CONFLICT targets),
+-- not before — doing it here would break every existing "connect account"
+-- call immediately, since ON CONFLICT must match a real constraint.
+ALTER TABLE linked_accounts ADD COLUMN IF NOT EXISTS user_id INT REFERENCES users(id) ON DELETE CASCADE;
 
 -- This app supports one account per platform, but the (platform, external_id)
 -- unique constraint above didn't prevent orphaned duplicates from piling up
@@ -106,7 +137,10 @@ CREATE INDEX IF NOT EXISTS idx_user_games_account ON user_games(linked_account_i
 CREATE INDEX IF NOT EXISTS idx_user_ach_account ON user_achievements(linked_account_id);
 CREATE INDEX IF NOT EXISTS idx_platform_games_igdb ON platform_games(igdb_id);
 
--- Single-row profile: this app is single-user, so there's exactly one.
+-- Legacy single-row profile from before multi-user support. No longer
+-- written to by the app (display_name/avatar_url now live on users) — kept
+-- only so app.db.migrate_single_user_to_admin() can read this deployment's
+-- pre-existing profile into the new admin user it creates on first boot.
 CREATE TABLE IF NOT EXISTS profile (
     id              INT PRIMARY KEY DEFAULT 1,
     display_name    TEXT,

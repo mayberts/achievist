@@ -30,6 +30,117 @@ async def apply_schema(pool: AsyncConnectionPool) -> None:
         await conn.execute(schema)
 
 
+async def migrate_single_user_to_admin(pool: AsyncConnectionPool) -> str | None:
+    """
+    One-time migration for deployments that predate multi-user support: if
+    there's pre-existing linked_accounts/profile data but no users yet,
+    create an admin user, attach all existing data to it, and return the
+    freshly generated password (only non-None the run this actually
+    happens) so it can be surfaced to the operator via logs. A fresh install
+    with no prior data returns None — first-run setup handles that case via
+    the /api/setup endpoint instead.
+    """
+    from app.auth import hash_password
+    import secrets
+
+    async with pool.connection() as conn:
+        existing = await _fetchrow(conn, "SELECT COUNT(*) AS n FROM users")
+        if existing["n"] > 0:
+            return None
+
+        has_data = await _fetchrow(
+            conn,
+            "SELECT (EXISTS (SELECT 1 FROM linked_accounts) OR "
+            "EXISTS (SELECT 1 FROM profile WHERE display_name IS NOT NULL OR avatar_url IS NOT NULL)) AS has_data"
+        )
+        if not has_data["has_data"]:
+            return None
+
+        profile_row = await _fetchrow(conn, "SELECT display_name, avatar_url FROM profile WHERE id = 1")
+        password = secrets.token_urlsafe(12)
+        user = await _fetchrow(
+            conn,
+            "INSERT INTO users (username, password_hash, display_name, avatar_url, is_admin) "
+            "VALUES ('admin', %s, %s, %s, TRUE) RETURNING id",
+            hash_password(password),
+            profile_row["display_name"] if profile_row else None,
+            profile_row["avatar_url"] if profile_row else None,
+        )
+        await conn.execute("UPDATE linked_accounts SET user_id = %s WHERE user_id IS NULL", (user["id"],))
+        return password
+
+
+# ── Users & sessions ──────────────────────────────────────────────────────
+
+async def count_users(conn) -> int:
+    row = await _fetchrow(conn, "SELECT COUNT(*) AS n FROM users")
+    return row["n"]
+
+
+async def create_user(
+    conn, username: str, password_hash: str, display_name: str | None = None,
+    avatar_url: str | None = None, is_admin: bool = False,
+) -> dict:
+    return await _fetchrow(
+        conn,
+        "INSERT INTO users (username, password_hash, display_name, avatar_url, is_admin) "
+        "VALUES (%s, %s, %s, %s, %s) "
+        "RETURNING id, username, display_name, avatar_url, is_admin, created_at",
+        username, password_hash, display_name, avatar_url, is_admin,
+    )
+
+
+async def get_user_by_username(conn, username: str) -> dict | None:
+    return await _fetchrow(conn, "SELECT * FROM users WHERE username = %s", username)
+
+
+async def get_user_by_id(conn, user_id: int) -> dict | None:
+    return await _fetchrow(conn, "SELECT * FROM users WHERE id = %s", user_id)
+
+
+async def list_users(conn) -> list[dict]:
+    return await _fetch(
+        conn,
+        "SELECT id, username, display_name, avatar_url, is_admin, created_at FROM users ORDER BY id",
+    )
+
+
+async def update_user_profile(conn, user_id: int, display_name: str | None, avatar_url: str | None) -> None:
+    await conn.execute(
+        "UPDATE users SET display_name = %s, avatar_url = %s WHERE id = %s",
+        (display_name, avatar_url, user_id),
+    )
+
+
+async def update_user_password(conn, user_id: int, password_hash: str) -> None:
+    await conn.execute("UPDATE users SET password_hash = %s WHERE id = %s", (password_hash, user_id))
+
+
+async def delete_user(conn, user_id: int) -> None:
+    await conn.execute("DELETE FROM users WHERE id = %s", (user_id,))
+
+
+async def create_session(conn, token: str, user_id: int, expires_at) -> None:
+    await conn.execute(
+        "INSERT INTO sessions (token, user_id, expires_at) VALUES (%s, %s, %s)",
+        (token, user_id, expires_at),
+    )
+
+
+async def get_session_user(conn, token: str) -> dict | None:
+    return await _fetchrow(
+        conn,
+        "SELECT u.id, u.username, u.display_name, u.avatar_url, u.is_admin "
+        "FROM sessions s JOIN users u ON u.id = s.user_id "
+        "WHERE s.token = %s AND s.expires_at > now()",
+        token,
+    )
+
+
+async def delete_session(conn, token: str) -> None:
+    await conn.execute("DELETE FROM sessions WHERE token = %s", (token,))
+
+
 async def _fetchrow(conn, query: str, *args):
     async with conn.cursor(row_factory=dict_row) as cur:
         await cur.execute(query, args)
