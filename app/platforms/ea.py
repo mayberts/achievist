@@ -57,6 +57,7 @@ def _parse_date(val):
 class EAPlatform(Platform):
     KEY = "ea"
     LABEL = "EA App"
+    EXTERNAL_ID = "ea"  # single-identity: the real player id only becomes known from the token itself
     CONNECT_FIELDS = [
         {"name": "access_token", "label": "EA Access Token", "type": "password", "required": True, "secret": True,
          "help": "While logged into EA in your browser, open "
