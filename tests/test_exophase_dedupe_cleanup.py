@@ -44,3 +44,25 @@ async def test_dedupe_stored_achievements_keeps_unlocked_copy(db_conn):
     assert unlocked_dup in ids
     assert other in ids
     assert len(rows) == 2
+
+
+async def test_dedupe_stored_achievements_matches_despite_case_differences(db_conn):
+    """Ubisoft's duplicate copies differ in case/punctuation, e.g. "DIY" vs "Diy"."""
+    pg_id = await db.upsert_platform_game(db_conn, "ubisoft", "far-cry-6-uplay", "Far Cry 6", None, 92)
+
+    upper = await db.upsert_achievement(
+        db_conn, pg_id, "1-diy", "DIY", "Acquire 5 of Juan's Resolver Weapons.", None, None, 41.0,
+    )
+    lower = await db.upsert_achievement(db_conn, pg_id, "2-diy", "Diy", None, None, None, None)
+
+    await _dedupe_stored_achievements(db_conn, pg_id)
+
+    rows = await db._fetch(
+        db_conn, "SELECT id FROM achievements WHERE platform_game_id = %s", pg_id,
+    )
+    ids = {r["id"] for r in rows}
+    assert len(rows) == 1
+    # Neither copy is unlocked, so the one with a description wins (its
+    # capitalization/punctuation happens to reflect the real name better).
+    assert upper in ids
+    assert lower not in ids
