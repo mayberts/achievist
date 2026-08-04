@@ -111,6 +111,21 @@ export interface AuthStatus {
   needs_setup: boolean;
 }
 
+export interface User {
+  id: number;
+  username: string;
+  display_name: string | null;
+  avatar_url: string | null;
+  is_admin: boolean;
+  created_at?: string;
+}
+
+export interface AuthStatus {
+  logged_in: boolean;
+  user: User | null;
+  needs_setup: boolean;
+}
+
 export interface Summary {
   total_games: number;
   total_earned: number;
