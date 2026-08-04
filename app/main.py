@@ -1138,13 +1138,25 @@ async def exophase_page_debug(exo_slug: str = Query(...), page_type: str = Query
     async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
         r = await client.get(url, headers=_PAGE_HEADERS)
 
+    text = r.text
+    # Find where the achievement grid actually starts, whatever its real
+    # class names turn out to be, instead of guessing blind again.
+    idx = text.lower().find("award-image")
+    if idx == -1:
+        idx = text.lower().find("data-tippy-content")
+    if idx == -1:
+        idx = text.lower().find("achievement")
+    context = text[max(0, idx - 200):idx + 2000] if idx != -1 else None
+
     return {
         "url": url,
         "status_code": r.status_code,
         "icons_found": len(icons),
         "sample_icons": dict(list(icons.items())[:5]),
-        "html_length": len(r.text),
-        "html_snippet": r.text[:3000],
+        "html_length": len(text),
+        "found_marker_at": idx if idx != -1 else None,
+        "context_around_marker": context,
+        "head_snippet": text[:1500] if idx == -1 else None,
     }
 
 
