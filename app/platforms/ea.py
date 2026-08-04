@@ -6,160 +6,94 @@ import httpx
 
 from app import config, db
 from app.platforms.base import Platform
+from app.platforms.exophase import fetch_environment_games, fetch_earned, fetch_game_page_icons
 
 log = logging.getLogger(__name__)
 
-_GRAPHQL = "https://service-aggregation-layer.juno.ea.com/graphql"
 
-_IDENTITY_QUERY = "query GetIdentity { me { player { pd psd displayName } } }"
-
-_OWNED_GAMES_QUERY = """
-query GetOwnedGameProducts($locale: Locale!) {
-  me {
-    ownedGameProducts(
-      storefronts: [EA]
-      type: [DIGITAL_FULL_GAME, DIGITAL_EXPANSION]
-      platforms: [PC]
-      limit: 9999
-      locale: $locale
-    ) {
-      items {
-        originOfferId
-        product { id name gameSlug baseItem { gameType } }
-      }
-    }
-  }
-}
-"""
-
-_ACHIEVEMENTS_QUERY = """
-query GetAchievements($offerId: String!, $playerPsd: String!, $locale: Locale!) {
-  achievements(offerId: $offerId, playerPsd: $playerPsd, locale: $locale) {
-    id
-    achievements { id name description awardCount date }
-  }
-}
-"""
+def _humanize(slug: str) -> str:
+    return slug.replace("-", " ").title()
 
 
-def _parse_date(val):
-    if not val:
+def _parse_ts(ts) -> datetime | None:
+    if not ts:
         return None
     try:
-        return datetime.strptime(val, "%Y-%m-%dT%H:%M:%S.%fZ")
+        return datetime.fromtimestamp(int(ts))
     except Exception:
-        try:
-            return datetime.fromisoformat(val.replace("Z", "+00:00"))
-        except Exception:
-            return None
+        return None
 
 
 class EAPlatform(Platform):
     KEY = "ea"
     LABEL = "EA App"
-    EXTERNAL_ID = "ea"  # single-identity: the real player id only becomes known from the token itself
-    CONNECT_FIELDS = [
-        {"name": "access_token", "label": "EA Access Token", "type": "password", "required": True, "secret": True,
-         "help": "While logged into EA in your browser, open "
-                 "https://accounts.ea.com/connect/auth?client_id=ORIGIN_JS_SDK&response_type=token"
-                 "&redirect_uri=nucleus:rest&prompt=none — copy the access_token value from the "
-                 "redirected URL. This is unofficial and the token expires periodically, so you'll "
-                 "need to repeat this and reconnect when sync starts failing."},
-    ]
-
-    async def _gql(self, client, headers, query, variables):
-        r = await client.post(_GRAPHQL, json={"query": query, "variables": variables}, headers=headers)
-        if r.status_code == 401:
-            raise RuntimeError("EA access token expired or invalid — reconnect with a fresh token.")
-        r.raise_for_status()
-        data = r.json()
-        if data.get("errors"):
-            raise RuntimeError(f"EA GraphQL error: {data['errors']}")
-        return data.get("data") or {}
+    # EA has no reachable achievements API of its own — its unofficial GraphQL
+    # backend has introspection disabled and rejects reconstructed queries
+    # with no diagnostic detail, a dead end. Exophase has already done that
+    # reverse engineering and exposes it through a public per-player API,
+    # riding on the same Exophase login already configured for Xbox 360 icon
+    # enrichment (EXOPHASE_PLAYER_ID/EXOPHASE_ACCESS_TOKEN) — no separate
+    # per-account credential needed here.
+    EXTERNAL_ID = "ea"
+    # No per-account credential needed: this rides on the app's existing
+    # Exophase login (EXOPHASE_PLAYER_ID / EXOPHASE_ACCESS_TOKEN env vars,
+    # the same ones already powering Xbox 360 icon enrichment) to read
+    # linked EA/Origin games from Exophase's public per-player API.
+    CONNECT_FIELDS: list[dict] = []
 
     async def sync(self, account: dict, conn) -> None:
-        token = self.cred(account, "access_token")
-        if not token:
-            raise RuntimeError("Missing EA access token.")
+        if not config.EXOPHASE_PLAYER_ID or not config.EXOPHASE_ACCESS_TOKEN:
+            raise RuntimeError(
+                "EXOPHASE_PLAYER_ID / EXOPHASE_ACCESS_TOKEN not configured — EA sync rides on "
+                "the app's Exophase login, same as Xbox 360 icon enrichment."
+            )
         delay = config.REQUEST_DELAY_SECONDS
-        headers = {
-            "Content-Type": "application/json",
-            "Accept": "application/json",
-            "Authorization": f"Bearer {token}",
-            # EA's edge appears to silently black-hole requests carrying httpx's
-            # default "python-httpx/..." User-Agent rather than rejecting them
-            # cleanly, which surfaces as a ReadTimeout with no useful error.
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-                          "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            "Origin": "https://www.ea.com",
-        }
+
+        linked_id = await db.upsert_linked_account(conn, "ea", account["external_id"])
+        earned_cache = await db.get_earned_counts(conn, linked_id)
 
         async with httpx.AsyncClient(timeout=30) as client:
-            identity = await self._gql(client, headers, _IDENTITY_QUERY, {})
-            player = ((identity.get("me") or {}).get("player") or {})
-            player_psd = player.get("psd")
-            if not player_psd:
-                raise RuntimeError("Could not resolve EA player identity from this token.")
+            games = await fetch_environment_games(
+                client, config.EXOPHASE_PLAYER_ID, config.EXOPHASE_ACCESS_TOKEN, "origin",
+            )
+        log.info("EA (via Exophase): %d games", len(games))
 
-            # Key the DB row by the fixed connect-time external_id ("ea"), not the
-            # resolved player id — this platform holds credentials on that one
-            # row, and re-keying it (as an earlier version of this file did)
-            # spawns a second, credential-less row that then wins the "one
-            # account per platform" UI display and fails future syncs.
-            linked_id = await db.upsert_linked_account(conn, "ea", account["external_id"])
-            # Self-heal: an earlier version of this file mis-keyed the DB row by
-            # the resolved player id, spawning a stray credential-less duplicate.
-            # Collapse back down to the one true (credentialed) row if that happened.
-            await db.delete_other_accounts_for_platform(conn, "ea", account["external_id"])
-            earned_cache = await db.get_earned_counts(conn, linked_id)
+        for g in games:
+            total = g["total_awards"]
+            if not total:
+                continue
+            exo_slug = g["exo_slug"]
+
+            self._inc("games_seen")
+            pg_id = await db.upsert_platform_game(conn, "ea", exo_slug, g["title"], g["cover"], total)
+            await db.upsert_user_game(conn, linked_id, pg_id, 0, g["earned_awards"], total, None)
+
+            cached = earned_cache.get(exo_slug)
+            if cached and cached["earned"] == g["earned_awards"] and cached["stored"] >= total > 0:
+                continue
 
             await asyncio.sleep(delay)
-            owned = await self._gql(client, headers, _OWNED_GAMES_QUERY, {"locale": "en_US"})
-            games = ((owned.get("me") or {}).get("ownedGameProducts") or {}).get("items") or []
-            log.info("EA: %d owned games for %s", len(games), account["external_id"])
+            icons = await fetch_game_page_icons(exo_slug)  # {name_slug: icon_url}, locked + unlocked
+            await asyncio.sleep(delay)
+            earned = await fetch_earned(g["master_playerid"], g["master_id"])  # {slug: {timestamp, icon}}
 
-            for g in games:
-                offer_id = g.get("originOfferId")
-                product = g.get("product") or {}
-                name = product.get("name")
-                if not offer_id or not name:
-                    continue
+            # Union both slug sets: the page scrape may miss secret/hidden
+            # achievements that only appear once earned, and vice versa the
+            # earned feed's own slug is Exophase's canonical one (may differ
+            # slightly from our re-slugified tooltip name).
+            all_slugs = set(icons) | set(earned)
+            if not all_slugs:
+                continue
 
-                await asyncio.sleep(delay)
-                try:
-                    adata = await self._gql(
-                        client, headers, _ACHIEVEMENTS_QUERY,
-                        {"offerId": offer_id, "playerPsd": player_psd, "locale": "en_US"},
-                    )
-                except RuntimeError:
-                    continue  # not every EA product has an achievement set
-
-                sets = adata.get("achievements") or {}
-                definitions = sets.get("achievements") or []
-                if not definitions:
-                    continue
-
-                total = len(definitions)
-                earned = sum(1 for a in definitions if (a.get("awardCount") or 0) > 0)
-
-                self._inc("games_seen")
-                pg_id = await db.upsert_platform_game(conn, "ea", offer_id, name, None, total)
-                await db.upsert_user_game(conn, linked_id, pg_id, 0, earned, total, None)
-
-                cached = earned_cache.get(offer_id)
-                if cached and cached["earned"] == earned and cached["stored"] >= total > 0:
-                    continue
-
-                for a in definitions:
-                    aid = str(a.get("id") or "")
-                    ach_name = a.get("name") or aid
-                    if not aid:
-                        continue
-                    self._inc("achievements_synced")
-                    is_unlocked = (a.get("awardCount") or 0) > 0
-                    db_ach_id = await db.upsert_achievement(
-                        conn, pg_id, aid, ach_name, a.get("description"), None, None, None,
-                    )
-                    await db.upsert_user_achievement(
-                        conn, linked_id, db_ach_id, is_unlocked, _parse_date(a.get("date")) if is_unlocked else None,
-                    )
+            for slug in all_slugs:
+                self._inc("achievements_synced")
+                earned_info = earned.get(slug)
+                is_unlocked = earned_info is not None
+                icon = (earned_info or {}).get("icon") or icons.get(slug)
+                db_ach_id = await db.upsert_achievement(
+                    conn, pg_id, slug, _humanize(slug), None, icon, None, None,
+                )
+                await db.upsert_user_achievement(
+                    conn, linked_id, db_ach_id, is_unlocked,
+                    _parse_ts((earned_info or {}).get("timestamp")),
+                )
