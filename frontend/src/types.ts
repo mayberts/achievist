@@ -70,6 +70,21 @@ export interface Achievement {
   unlocked_at: string | null;
 }
 
+export interface AchievementSearchResult extends Achievement {
+  platform_game_id: number;
+  game_name: string;
+  platform: string;
+  sgdb_cover_url: string | null;
+  game_icon_url: string | null;
+}
+
+export interface AchievementSearchResponse {
+  total: number;
+  page: number;
+  page_size: number;
+  achievements: AchievementSearchResult[];
+}
+
 export interface GamesResponse {
   total: number;
   page: number;
