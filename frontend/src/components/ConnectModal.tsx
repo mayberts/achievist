@@ -29,9 +29,7 @@ export function ConnectModal({
             <X size={18} />
           </button>
         </div>
-        {schema.key === "ubisoft" ? (
-          <UbisoftFlow schema={schema} account={account} onConnected={onConnected} />
-        ) : schema.key === "psn" ? (
+        {schema.key === "psn" ? (
           <PSNFlow schema={schema} account={account} onConnected={onConnected} />
         ) : schema.key === "xbox" ? (
           <XboxFlow schema={schema} account={account} onConnected={onConnected} />
@@ -119,103 +117,6 @@ function FormFlow({
         className="w-full rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-accent/90 disabled:opacity-50"
       >
         {busy ? "Connecting…" : "Connect"}
-      </button>
-    </div>
-  );
-}
-
-function UbisoftFlow({
-  schema,
-  account,
-  onConnected,
-}: {
-  schema: PlatformSchema;
-  account?: Account;
-  onConnected: () => void;
-}) {
-  const [signedIn, setSignedIn] = useState<boolean | null>(null);
-  const [forceLogin, setForceLogin] = useState(false);
-
-  useEffect(() => {
-    api.ubisoftServiceStatus().then((s) => setSignedIn(s.signed_in)).catch(() => setSignedIn(false));
-  }, []);
-
-  if (signedIn === null) {
-    return <div className="py-6 text-center text-muted">Checking…</div>;
-  }
-
-  // Once the backend service account is signed in, an account is just a username.
-  if (signedIn && !forceLogin) {
-    return (
-      <div className="space-y-3">
-        <FormFlow schema={schema} account={account} onConnected={onConnected} />
-        <button
-          onClick={() => setForceLogin(true)}
-          className="text-xs text-muted underline hover:text-slate-300"
-        >
-          Re-sign in the backend Ubisoft account
-        </button>
-      </div>
-    );
-  }
-
-  return (
-    <UbisoftServiceLogin
-      onSignedIn={() => {
-        setSignedIn(true);
-        setForceLogin(false);
-      }}
-    />
-  );
-}
-
-function UbisoftServiceLogin({ onSignedIn }: { onSignedIn: () => void }) {
-  const [ticket, setTicket] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-
-  async function save() {
-    setError(null);
-    setBusy(true);
-    try {
-      await api.ubisoftServiceTicket(ticket.trim());
-      onSignedIn();
-    } catch (e) {
-      setError(String(e instanceof Error ? e.message : e));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <div className="space-y-3">
-      <p className="rounded-lg bg-ink-900 px-3 py-2 text-xs text-muted">
-        Ubisoft blocks server-side password logins, so the app needs one browser session ticket to
-        read public profiles by username. This is stored once and reused; it expires after a few
-        hours, so you'll re-paste it occasionally.
-      </p>
-      <ol className="list-decimal space-y-1 pl-5 text-xs text-muted">
-        <li>Log in at <span className="text-slate-300">connect.ubisoft.com</span></li>
-        <li>Open DevTools (F12) → <span className="text-slate-300">Application → Local Storage</span></li>
-        <li>Copy the long value that starts with <span className="text-slate-300">ewog…</span></li>
-      </ol>
-      <div>
-        <label className="mb-1 block text-sm font-medium text-slate-300">Session Ticket</label>
-        <textarea
-          value={ticket}
-          onChange={(e) => setTicket(e.target.value)}
-          rows={3}
-          placeholder="ewog…"
-          className="w-full resize-none rounded-lg border border-line bg-ink-900 px-3 py-2 text-xs text-slate-100 outline-none focus:border-accent-soft"
-        />
-      </div>
-      {error && <p className="rounded-lg bg-red-950/50 px-3 py-2 text-sm text-red-300">{error}</p>}
-      <button
-        onClick={save}
-        disabled={busy || !ticket.trim()}
-        className="w-full rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-accent/90 disabled:opacity-50"
-      >
-        {busy ? "Validating…" : "Save session"}
       </button>
     </div>
   );
