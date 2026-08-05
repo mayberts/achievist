@@ -107,10 +107,11 @@ async def list_users(conn) -> list[dict]:
 
 async def update_user_profile(
     conn, user_id: int, display_name: str | None, avatar_url: str | None, share_stats: bool,
+    background_url: str | None = None,
 ) -> None:
     await conn.execute(
-        "UPDATE users SET display_name = %s, avatar_url = %s, share_stats = %s WHERE id = %s",
-        (display_name, avatar_url, share_stats, user_id),
+        "UPDATE users SET display_name = %s, avatar_url = %s, share_stats = %s, background_url = %s WHERE id = %s",
+        (display_name, avatar_url, share_stats, background_url, user_id),
     )
 
 
@@ -253,7 +254,7 @@ async def create_session(conn, token: str, user_id: int, expires_at) -> None:
 async def get_session_user(conn, token: str) -> dict | None:
     return await _fetchrow(
         conn,
-        "SELECT u.id, u.username, u.display_name, u.avatar_url, u.is_admin, u.share_stats "
+        "SELECT u.id, u.username, u.display_name, u.avatar_url, u.background_url, u.is_admin, u.share_stats "
         "FROM sessions s JOIN users u ON u.id = s.user_id "
         "WHERE s.token = %s AND s.expires_at > now()",
         token,

@@ -566,6 +566,7 @@ async def get_profile(user: dict = Depends(require_user)):
     return {
         "display_name": user["display_name"],
         "avatar_url": user["avatar_url"],
+        "background_url": user["background_url"],
         "share_stats": user["share_stats"],
     }
 
@@ -574,11 +575,17 @@ async def get_profile(user: dict = Depends(require_user)):
 async def update_profile(payload: dict, user: dict = Depends(require_user)):
     display_name = (payload.get("display_name") or "").strip() or None
     avatar_url = (payload.get("avatar_url") or "").strip() or None
+    background_url = (payload.get("background_url") or "").strip() or None
     share_stats = bool(payload.get("share_stats"))
     pool = await db.get_pool()
     async with pool.connection() as conn:
-        await db.update_user_profile(conn, user["id"], display_name, avatar_url, share_stats)
-    return {"display_name": display_name, "avatar_url": avatar_url, "share_stats": share_stats}
+        await db.update_user_profile(conn, user["id"], display_name, avatar_url, share_stats, background_url)
+    return {
+        "display_name": display_name,
+        "avatar_url": avatar_url,
+        "background_url": background_url,
+        "share_stats": share_stats,
+    }
 
 
 @app.get("/api/leaderboard")

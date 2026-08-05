@@ -4,6 +4,7 @@ import { LogOut, RefreshCw, Trophy } from "lucide-react";
 import { api } from "./api";
 import type { Summary, SyncProgress } from "./types";
 import { useAuth } from "./lib/auth";
+import { AppBackground } from "./components/AppBackground";
 import { Nav, type Tab } from "./components/Nav";
 import { SummaryBar } from "./components/SummaryBar";
 import { BackToTop } from "./components/BackToTop";
@@ -138,6 +139,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen">
+      <AppBackground />
       <div className="mx-auto max-w-6xl px-3 py-4 sm:px-4 sm:py-6">
         <div className="mb-4 flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
