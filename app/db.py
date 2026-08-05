@@ -244,6 +244,72 @@ async def get_shared_games(conn, requesting_user_id: int) -> list[dict]:
     )
 
 
+async def get_game_comparison(conn, requesting_user_id: int, platform_game_id: int) -> dict | None:
+    """
+    Achievement-by-achievement comparison for one game, across every
+    "visible" user (opted-in via share_stats, plus the requester) who owns
+    it. Returns None if the requester themself doesn't own this game — a
+    comparison of a game you don't have makes no sense, and doubles as an
+    access check so a user_id can't be used to snoop on games they've never
+    touched.
+    """
+    game = await _fetchrow(
+        conn,
+        "SELECT id, platform, name, icon_url, sgdb_cover_url FROM platform_games WHERE id = %s",
+        platform_game_id,
+    )
+    if not game:
+        return None
+
+    owners = await _fetch(
+        conn,
+        """
+        SELECT DISTINCT la.user_id, u.username, u.display_name, u.avatar_url
+        FROM user_games ug
+        JOIN linked_accounts la ON la.id = ug.linked_account_id
+        JOIN users u ON u.id = la.user_id
+        WHERE ug.platform_game_id = %s AND (u.share_stats = true OR u.id = %s)
+        ORDER BY la.user_id
+        """,
+        platform_game_id, requesting_user_id,
+    )
+    if not any(o["user_id"] == requesting_user_id for o in owners):
+        return None
+
+    achievements = await _fetch(
+        conn,
+        """
+        SELECT
+            a.id, a.platform_ach_id, a.name, a.description, a.icon_url,
+            a.points, a.rarity_pct,
+            json_agg(
+                json_build_object(
+                    'user_id', o.user_id,
+                    'unlocked', COALESCE(ua.unlocked, false),
+                    'unlocked_at', ua.unlocked_at
+                ) ORDER BY o.user_id
+            ) AS per_user
+        FROM achievements a
+        -- linked_account_id (not just user_id) here so a user with accounts
+        -- on multiple platforms only matches their account *for this game's
+        -- platform*, not any unlock rows from an unrelated platform account.
+        CROSS JOIN (
+            SELECT DISTINCT la.user_id, la.id AS linked_account_id
+            FROM user_games ug
+            JOIN linked_accounts la ON la.id = ug.linked_account_id
+            JOIN users u ON u.id = la.user_id
+            WHERE ug.platform_game_id = %s AND (u.share_stats = true OR u.id = %s)
+        ) o
+        LEFT JOIN user_achievements ua ON ua.achievement_id = a.id AND ua.linked_account_id = o.linked_account_id
+        WHERE a.platform_game_id = %s
+        GROUP BY a.id, a.platform_ach_id, a.name, a.description, a.icon_url, a.points, a.rarity_pct
+        ORDER BY a.rarity_pct ASC NULLS LAST, a.name
+        """,
+        platform_game_id, requesting_user_id, platform_game_id,
+    )
+    return {"game": game, "owners": owners, "achievements": achievements}
+
+
 async def get_user_export(conn, user_id: int) -> dict:
     """
     Everything one user would want in a personal backup — their connected

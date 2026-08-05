@@ -51,6 +51,36 @@ export interface SharedGame {
   players: SharedGamePlayer[];
 }
 
+export interface GameComparisonOwner {
+  user_id: number;
+  username: string;
+  display_name: string | null;
+  avatar_url: string | null;
+}
+
+export interface GameComparisonUnlock {
+  user_id: number;
+  unlocked: boolean;
+  unlocked_at: string | null;
+}
+
+export interface GameComparisonAchievement {
+  id: number;
+  platform_ach_id: string;
+  name: string | null;
+  description: string | null;
+  icon_url: string | null;
+  points: number | null;
+  rarity_pct: number | null;
+  per_user: GameComparisonUnlock[];
+}
+
+export interface GameComparison {
+  game: { id: number; platform: string; name: string; icon_url: string | null; sgdb_cover_url: string | null };
+  owners: GameComparisonOwner[];
+  achievements: GameComparisonAchievement[];
+}
+
 export interface SharedGamesResponse {
   games: SharedGame[];
   you_share: boolean;
