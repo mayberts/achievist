@@ -100,6 +100,50 @@ async def test_shared_games_empty_when_no_overlap(db_conn, client):
     assert resp.json()["games"] == []
 
 
+async def test_compare_shows_per_user_unlock_status(db_conn, client):
+    parent = await db.create_user(db_conn, "parent", auth.hash_password("parentpassword1"), is_admin=True)
+    kid = await db.create_user(db_conn, "kid", auth.hash_password("kidpassword1"), is_admin=False)
+    await db.update_user_profile(db_conn, kid["id"], None, None, True)
+    parent_account = await db.upsert_account(db_conn, parent["id"], "steam", "111", {})
+    kid_account = await db.upsert_account(db_conn, kid["id"], "steam", "222", {})
+    game = await db.upsert_platform_game(db_conn, "steam", "1", "Some Game", None, 2)
+    await db.upsert_user_game(db_conn, parent_account, game, 0, 1, 2)
+    await db.upsert_user_game(db_conn, kid_account, game, 0, 2, 2)
+    a1 = await db.upsert_achievement(db_conn, game, "a1", "First", "", None, 10, None)
+    a2 = await db.upsert_achievement(db_conn, game, "a2", "Second", "", None, 10, None)
+    await db.upsert_user_achievement(db_conn, parent_account, a1, True, None)
+    await db.upsert_user_achievement(db_conn, kid_account, a1, True, None)
+    await db.upsert_user_achievement(db_conn, kid_account, a2, True, None)
+    await db_conn.commit()
+
+    await client.post("/api/auth/login", json={"username": "parent", "password": "parentpassword1"})
+    resp = await client.get(f"/api/leaderboard/games/{game}/compare")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["game"]["name"] == "Some Game"
+    assert {o["username"] for o in data["owners"]} == {"parent", "kid"}
+    assert len(data["achievements"]) == 2
+
+    by_name = {a["name"]: a for a in data["achievements"]}
+    second = by_name["Second"]
+    per_user = {p["user_id"]: p["unlocked"] for p in second["per_user"]}
+    assert per_user[parent["id"]] is False
+    assert per_user[kid["id"]] is True
+
+
+async def test_compare_404s_for_a_game_you_dont_own(db_conn, client):
+    parent = await db.create_user(db_conn, "parent", auth.hash_password("parentpassword1"), is_admin=True)
+    kid = await db.create_user(db_conn, "kid", auth.hash_password("kidpassword1"), is_admin=False)
+    kid_account = await db.upsert_account(db_conn, kid["id"], "steam", "222", {})
+    game = await db.upsert_platform_game(db_conn, "steam", "1", "Some Game", None, 1)
+    await db.upsert_user_game(db_conn, kid_account, game, 0, 0, 1)
+    await db_conn.commit()
+
+    await client.post("/api/auth/login", json={"username": "parent", "password": "parentpassword1"})
+    resp = await client.get(f"/api/leaderboard/games/{game}/compare")
+    assert resp.status_code == 404
+
+
 async def test_share_stats_toggle_via_profile_endpoint(db_conn, client):
     await db.create_user(db_conn, "parent", auth.hash_password("parentpassword1"), is_admin=True)
     await db_conn.commit()

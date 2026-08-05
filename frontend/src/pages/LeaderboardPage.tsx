@@ -4,6 +4,7 @@ import { api } from "../api";
 import type { LeaderboardEntry, LeaderboardResponse, SharedGame, SharedGamesResponse } from "../types";
 import { fmtNum } from "../lib/format";
 import { platformLabel } from "../lib/platforms";
+import { GameCompareModal } from "../components/GameCompareModal";
 
 const RANK_STYLE = [
   "border-amber-400/40 bg-amber-400/10 text-amber-300",
@@ -63,10 +64,13 @@ function Row({ entry, rank }: { entry: LeaderboardEntry; rank: number }) {
   );
 }
 
-function SharedGameRow({ game }: { game: SharedGame }) {
+function SharedGameRow({ game, onCompare }: { game: SharedGame; onCompare: () => void }) {
   const leader = game.players[0];
   return (
-    <div className="rounded-card border border-line bg-ink-850 p-3.5 sm:p-4">
+    <button
+      onClick={onCompare}
+      className="w-full rounded-card border border-line bg-ink-850 p-3.5 text-left transition hover:border-ink-600 sm:p-4"
+    >
       <div className="flex items-center gap-3">
         <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center overflow-hidden rounded-lg bg-ink-700 text-muted">
           {game.sgdb_cover_url || game.icon_url ? (
@@ -105,13 +109,14 @@ function SharedGameRow({ game }: { game: SharedGame }) {
           );
         })}
       </div>
-    </div>
+    </button>
   );
 }
 
 export function LeaderboardPage() {
   const [data, setData] = useState<LeaderboardResponse | null>(null);
   const [gamesData, setGamesData] = useState<SharedGamesResponse | null>(null);
+  const [comparing, setComparing] = useState<number | null>(null);
 
   useEffect(() => {
     api.leaderboard().then(setData).catch(() => setData(null));
@@ -169,9 +174,13 @@ export function LeaderboardPage() {
       ) : (
         <div className="grid gap-2.5 sm:grid-cols-2">
           {gamesData.games.map((g) => (
-            <SharedGameRow key={g.platform_game_id} game={g} />
+            <SharedGameRow key={g.platform_game_id} game={g} onCompare={() => setComparing(g.platform_game_id)} />
           ))}
         </div>
+      )}
+
+      {comparing != null && (
+        <GameCompareModal platformGameId={comparing} onClose={() => setComparing(null)} />
       )}
     </div>
   );

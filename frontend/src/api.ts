@@ -5,6 +5,7 @@ import type {
   Activity,
   AuthStatus,
   BackupsResponse,
+  GameComparison,
   GameDetail,
   GamesResponse,
   LeaderboardResponse,
@@ -119,6 +120,8 @@ export const api = {
 
   leaderboard: () => get<LeaderboardResponse>("/api/leaderboard"),
   sharedGames: () => get<SharedGamesResponse>("/api/leaderboard/games"),
+  compareGame: (platformGameId: number) =>
+    get<GameComparison>(`/api/leaderboard/games/${platformGameId}/compare`),
 
   games: (q: GamesQuery) => {
     const params = new URLSearchParams();

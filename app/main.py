@@ -605,6 +605,16 @@ async def leaderboard_games(user: dict = Depends(require_user)):
     return {"games": rows, "you_share": user["share_stats"]}
 
 
+@app.get("/api/leaderboard/games/{platform_game_id}/compare")
+async def compare_game_achievements(platform_game_id: int, user: dict = Depends(require_user)):
+    pool = await db.get_pool()
+    async with pool.connection() as conn:
+        result = await db.get_game_comparison(conn, user["id"], platform_game_id)
+    if not result:
+        raise HTTPException(status_code=404, detail="Game not found in your library")
+    return result
+
+
 @app.get("/api/summary")
 async def summary(user: dict = Depends(require_user)):
     pool = await db.get_pool()
