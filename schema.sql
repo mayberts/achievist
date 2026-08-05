@@ -7,11 +7,13 @@ CREATE TABLE IF NOT EXISTS users (
     password_hash   TEXT NOT NULL,
     display_name    TEXT,
     avatar_url      TEXT,
+    background_url  TEXT,                            -- personal background image, shown across the whole app
     is_admin        BOOLEAN NOT NULL DEFAULT FALSE,
     share_stats     BOOLEAN NOT NULL DEFAULT FALSE,  -- opt-in: show this user on the family leaderboard
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 ALTER TABLE users ADD COLUMN IF NOT EXISTS share_stats BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS background_url TEXT;
 
 CREATE TABLE IF NOT EXISTS sessions (
     token       TEXT PRIMARY KEY,

@@ -15,6 +15,7 @@ export function ProfileEditModal({
 }) {
   const [displayName, setDisplayName] = useState(profile.display_name ?? "");
   const [avatarUrl, setAvatarUrl] = useState(profile.avatar_url ?? "");
+  const [backgroundUrl, setBackgroundUrl] = useState(profile.background_url ?? "");
   const [shareStats, setShareStats] = useState(profile.share_stats);
   const [saving, setSaving] = useState(false);
   const toast = useToast();
@@ -25,6 +26,7 @@ export function ProfileEditModal({
       const saved = await api.updateProfile({
         display_name: displayName.trim() || null,
         avatar_url: avatarUrl.trim() || null,
+        background_url: backgroundUrl.trim() || null,
         share_stats: shareStats,
       });
       toast.success("Profile updated");
@@ -79,6 +81,25 @@ export function ProfileEditModal({
                 src={avatarUrl.trim()}
                 alt=""
                 className="mt-2 h-14 w-14 rounded-full object-cover ring-1 ring-black/40"
+                onError={(e) => (e.currentTarget.style.visibility = "hidden")}
+                onLoad={(e) => (e.currentTarget.style.visibility = "visible")}
+              />
+            )}
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-medium text-muted">Background image URL</label>
+            <input
+              value={backgroundUrl}
+              onChange={(e) => setBackgroundUrl(e.target.value)}
+              placeholder="https://…"
+              className="w-full rounded-lg border border-line bg-ink-900 px-3 py-2 text-sm text-slate-100 outline-none placeholder:text-faint"
+            />
+            <p className="mt-1 text-xs text-faint">Shown behind every page. A game's own art still takes over on its detail page.</p>
+            {backgroundUrl.trim() && (
+              <img
+                src={backgroundUrl.trim()}
+                alt=""
+                className="mt-2 h-16 w-full rounded-lg object-cover ring-1 ring-black/40"
                 onError={(e) => (e.currentTarget.style.visibility = "hidden")}
                 onLoad={(e) => (e.currentTarget.style.visibility = "visible")}
               />

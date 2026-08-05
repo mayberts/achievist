@@ -31,6 +31,22 @@ function reportIfUnauthorized(url: string, status: number) {
   if (status === 401 && !url.startsWith("/api/auth/")) unauthorizedHandler?.();
 }
 
+// AppBackground fetches the profile once on mount, same as SummaryBar — but
+// it has no props/callback wired to ProfileEditModal's save, so without this
+// it'd stay stale until the next full page load. Broadcasting here instead
+// of threading a callback through App/SummaryBar/ProfileEditModal keeps the
+// background layer decoupled from where profile edits happen to live.
+const profileUpdatedHandlers = new Set<(p: Profile) => void>();
+export function onProfileUpdated(handler: (p: Profile) => void): () => void {
+  profileUpdatedHandlers.add(handler);
+  return () => {
+    profileUpdatedHandlers.delete(handler);
+  };
+}
+function notifyProfileUpdated(p: Profile) {
+  profileUpdatedHandlers.forEach((h) => h(p));
+}
+
 async function get<T>(url: string): Promise<T> {
   const r = await fetch(url);
   if (!r.ok) {
@@ -95,7 +111,11 @@ export const api = {
   summary: () => get<Summary>("/api/summary"),
 
   profile: () => get<Profile>("/api/profile"),
-  updateProfile: (p: Profile) => send<Profile>("/api/profile", "PUT", p),
+  updateProfile: (p: Profile) =>
+    send<Profile>("/api/profile", "PUT", p).then((saved) => {
+      notifyProfileUpdated(saved);
+      return saved;
+    }),
 
   leaderboard: () => get<LeaderboardResponse>("/api/leaderboard"),
   sharedGames: () => get<SharedGamesResponse>("/api/leaderboard/games"),

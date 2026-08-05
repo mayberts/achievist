@@ -12,6 +12,7 @@ export interface PlatformSummary {
 export interface Profile {
   display_name: string | null;
   avatar_url: string | null;
+  background_url: string | null;
   share_stats: boolean;
 }
 
