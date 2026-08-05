@@ -244,6 +244,54 @@ async def get_shared_games(conn, requesting_user_id: int) -> list[dict]:
     )
 
 
+async def get_user_export(conn, user_id: int) -> dict:
+    """
+    Everything one user would want in a personal backup — their connected
+    accounts (excluding credentials, which have no business leaving the
+    server), games, and unlocked achievements. Deliberately not a restorable
+    dump: re-importing would mean re-creating rows in the shared
+    platform_games/achievements catalog, which is out of scope for a
+    self-service export. Full restore already exists at the admin level via
+    pg_dump/pg_restore (see app/backup.py).
+    """
+    accounts = await _fetch(
+        conn,
+        """
+        SELECT platform, external_id, display_name, status, last_synced_at, created_at
+        FROM linked_accounts WHERE user_id = %s ORDER BY platform
+        """,
+        user_id,
+    )
+    games = await _fetch(
+        conn,
+        """
+        SELECT pg.platform, pg.name, ug.playtime_minutes, ug.earned_achievements,
+               ug.total_achievements, ug.completion_pct, ug.last_played_at
+        FROM user_games ug
+        JOIN linked_accounts la ON la.id = ug.linked_account_id
+        JOIN platform_games pg ON pg.id = ug.platform_game_id
+        WHERE la.user_id = %s
+        ORDER BY pg.platform, pg.name
+        """,
+        user_id,
+    )
+    achievements = await _fetch(
+        conn,
+        """
+        SELECT pg.platform, pg.name AS game_name, a.name AS achievement_name,
+               a.points, a.rarity_pct, ua.unlocked_at
+        FROM user_achievements ua
+        JOIN achievements a ON a.id = ua.achievement_id
+        JOIN platform_games pg ON pg.id = a.platform_game_id
+        JOIN linked_accounts la ON la.id = ua.linked_account_id
+        WHERE la.user_id = %s AND ua.unlocked = true
+        ORDER BY ua.unlocked_at DESC NULLS LAST
+        """,
+        user_id,
+    )
+    return {"accounts": accounts, "games": games, "achievements": achievements}
+
+
 async def create_session(conn, token: str, user_id: int, expires_at) -> None:
     await conn.execute(
         "INSERT INTO sessions (token, user_id, expires_at) VALUES (%s, %s, %s)",
