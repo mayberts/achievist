@@ -8,7 +8,8 @@ from datetime import datetime, timedelta, timezone
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from fastapi import Cookie, Depends, FastAPI, HTTPException, Query, Response
-from fastapi.responses import FileResponse
+from fastapi.encoders import jsonable_encoder
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from app import auth, backup, config, db, hltb as hltb_names
@@ -1702,6 +1703,31 @@ async def remove_backup(filename: str, admin: dict = Depends(require_admin)):
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid backup filename")
     return None
+
+
+# ── Personal data export ─────────────────────────────────────────────────────
+# Self-service, per-user export — anyone can download their own library and
+# unlocked achievements as JSON, no admin needed. Not a restorable dump
+# (credentials are excluded, and re-importing into the shared game catalog is
+# out of scope) — full restore is the admin-level pg_dump/pg_restore above.
+
+@app.get("/api/export")
+async def export_my_data(user: dict = Depends(require_user)):
+    pool = await db.get_pool()
+    async with pool.connection() as conn:
+        data = await db.get_user_export(conn, user["id"])
+    payload = {
+        "exported_at": datetime.now(timezone.utc).isoformat(),
+        "username": user["username"],
+        "display_name": user["display_name"],
+        **data,
+    }
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+    filename = f"achievist-export-{user['username']}-{stamp}.json"
+    return JSONResponse(
+        content=jsonable_encoder(payload),
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 # ── Connected-account management ─────────────────────────────────────────────
