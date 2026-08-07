@@ -255,7 +255,7 @@ async def get_game_comparison(conn, requesting_user_id: int, platform_game_id: i
     """
     game = await _fetchrow(
         conn,
-        "SELECT id, platform, name, icon_url, sgdb_cover_url FROM platform_games WHERE id = %s",
+        "SELECT id, platform, name, icon_url, sgdb_cover_url, guide_url FROM platform_games WHERE id = %s",
         platform_game_id,
     )
     if not game:
@@ -632,6 +632,18 @@ async def mark_guide_links_fetched(conn, platform_game_id: int) -> None:
     await conn.execute(
         "UPDATE platform_games SET guide_links_fetched_at = now() WHERE id = %s",
         (platform_game_id,),
+    )
+
+
+async def set_platform_game_guide_url(conn, platform_game_id: int, url: str) -> None:
+    """
+    Only call this once the scraper has confirmed the URL actually resolves
+    to real achievement links — an unconfirmed slug guess is wrong often
+    enough (edition/subtitle abbreviations) that it isn't safe to hand to
+    the frontend as a fallback link.
+    """
+    await conn.execute(
+        "UPDATE platform_games SET guide_url = %s WHERE id = %s", (url, platform_game_id),
     )
 
 

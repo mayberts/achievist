@@ -107,6 +107,11 @@ ALTER TABLE platform_games ADD COLUMN IF NOT EXISTS sgdb_cover_url TEXT;
 -- last scraped for this game, so it's only re-fetched occasionally rather
 -- than on every request.
 ALTER TABLE platform_games ADD COLUMN IF NOT EXISTS guide_links_fetched_at TIMESTAMPTZ;
+-- The game's TSA/TA page, but only set once the scraper actually confirms
+-- it (found real achievement links there) — guessing a slug from our own
+-- stored game name is wrong often enough (edition/subtitle variants) that
+-- an unverified guess isn't safe to hand to the frontend as a fallback link.
+ALTER TABLE platform_games ADD COLUMN IF NOT EXISTS guide_url TEXT;
 -- Clear previously stored store_ids so the improved title-match check re-validates them
 UPDATE platform_games SET store_id = NULL WHERE platform = 'xbox' AND store_id IS NOT NULL;
 

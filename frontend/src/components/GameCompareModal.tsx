@@ -99,7 +99,7 @@ export function GameCompareModal({
                         );
                       })}
                       <a
-                        href={a.guide_url || guideSearchUrl(data.game.platform, data.game.name, a.name)}
+                        href={a.guide_url || data.game.guide_url || guideSearchUrl(data.game.platform, data.game.name, a.name)}
                         target="_blank"
                         rel="noopener noreferrer"
                         title="Find a guide for this achievement"

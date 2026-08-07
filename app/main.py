@@ -887,6 +887,7 @@ async def game_detail(platform_game_id: int, user: dict = Depends(require_user))
                 pg.icon_url,
                 pg.store_id,
                 pg.sgdb_cover_url,
+                pg.guide_url,
                 pg.hltb_main,
                 pg.hltb_extra,
                 pg.hltb_complete,
@@ -1288,6 +1289,12 @@ async def _refresh_guide_links(platform_game_id: int) -> None:
             return
         links = await trueachievements.fetch_achievement_links(game["platform"], game["name"])
         if links:
+            # A non-empty result means the guessed/overridden slug actually
+            # resolved to a real achievements page — safe to cache as the
+            # game-level fallback link too, unlike an unconfirmed guess.
+            await db.set_platform_game_guide_url(
+                conn, platform_game_id, trueachievements.game_url(game["platform"], game["name"]),
+            )
             achievements = await db.list_achievement_names(conn, platform_game_id)
             mapping = {
                 a["id"]: links[trueachievements.normalize_name(a["name"])]

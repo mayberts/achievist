@@ -77,7 +77,14 @@ export interface GameComparisonAchievement {
 }
 
 export interface GameComparison {
-  game: { id: number; platform: string; name: string; icon_url: string | null; sgdb_cover_url: string | null };
+  game: {
+    id: number;
+    platform: string;
+    name: string;
+    icon_url: string | null;
+    sgdb_cover_url: string | null;
+    guide_url: string | null;
+  };
   owners: GameComparisonOwner[];
   achievements: GameComparisonAchievement[];
 }
@@ -119,6 +126,7 @@ export interface Game {
   icon_url: string | null;
   store_id: string | null;
   sgdb_cover_url: string | null;
+  guide_url: string | null;
   igdb_cover_url: string | null;
   playtime_minutes: number | null;
   earned_achievements: number;

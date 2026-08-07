@@ -298,7 +298,7 @@ export function GameDetailPage() {
                       </div>
                       {!unlocked && game && (
                         <a
-                          href={a.guide_url || guideSearchUrl(game.platform, game.name, a.name)}
+                          href={a.guide_url || game.guide_url || guideSearchUrl(game.platform, game.name, a.name)}
                           target="_blank"
                           rel="noopener noreferrer"
                           title="Find a guide for this achievement"
