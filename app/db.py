@@ -635,6 +635,22 @@ async def mark_guide_links_fetched(conn, platform_game_id: int) -> None:
     )
 
 
+async def clear_guide_links(conn, platform_game_id: int) -> None:
+    """
+    Force the next view to re-scrape immediately instead of waiting out the
+    30-day cache — for when a slug override/fix ships after a game was
+    already (wrongly) marked checked, or TSA/TA's page has visibly changed.
+    """
+    await conn.execute(
+        "UPDATE platform_games SET guide_links_fetched_at = NULL, guide_url = NULL WHERE id = %s",
+        (platform_game_id,),
+    )
+    await conn.execute(
+        "UPDATE achievements SET guide_url = NULL WHERE platform_game_id = %s",
+        (platform_game_id,),
+    )
+
+
 async def set_platform_game_guide_url(conn, platform_game_id: int, url: str) -> None:
     """
     Only call this once the scraper has confirmed the URL actually resolves

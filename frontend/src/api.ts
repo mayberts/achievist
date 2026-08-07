@@ -133,6 +133,7 @@ export const api = {
 
   gameDetail: (id: number) => get<GameDetail>(`/api/games/${id}`),
   gameAchievements: (id: number) => get<Achievement[]>(`/api/games/${id}/achievements`),
+  refreshGuideLinks: (id: number) => send<{ guide_url: string | null }>(`/api/games/${id}/refresh-guide-links`, "POST"),
 
   platforms: () => get<PlatformSchema[]>("/api/platforms"),
   accounts: () => get<Account[]>("/api/accounts"),

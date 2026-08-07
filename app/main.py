@@ -1311,6 +1311,26 @@ async def _maybe_schedule_guide_refresh(conn, platform_game_id: int) -> None:
         asyncio.create_task(_refresh_guide_links(platform_game_id))
 
 
+@app.post("/api/games/{platform_game_id}/refresh-guide-links")
+async def refresh_guide_links(platform_game_id: int, user: dict = Depends(require_user)):
+    """
+    Force an immediate re-scrape, bypassing the 30-day cache — for when a
+    slug override/fix ships after a game was already marked checked (see
+    db.clear_guide_links), or the site's page has visibly changed. Runs
+    synchronously (unlike the passive on-view scrape) since this is an
+    explicit user action expecting a result.
+    """
+    pool = await db.get_pool()
+    async with pool.connection() as conn:
+        game = await _fetchrow(conn, "SELECT id FROM platform_games WHERE id = %s", platform_game_id)
+        if not game:
+            raise HTTPException(status_code=404, detail="Game not found")
+        await db.clear_guide_links(conn, platform_game_id)
+        await _refresh_guide_links(platform_game_id)
+        updated = await _fetchrow(conn, "SELECT guide_url FROM platform_games WHERE id = %s", platform_game_id)
+    return {"guide_url": updated["guide_url"] if updated else None}
+
+
 @app.get("/api/games/{platform_game_id}/achievements")
 async def game_achievements(platform_game_id: int, user: dict = Depends(require_user)):
     pool = await db.get_pool()

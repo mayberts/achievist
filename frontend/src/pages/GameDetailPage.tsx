@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
-import { ArrowLeft, Trophy, Clock, Calendar, ExternalLink, Lock, ImageUp, Search } from "lucide-react";
+import { ArrowLeft, Trophy, Clock, Calendar, ExternalLink, Lock, ImageUp, Search, RefreshCw } from "lucide-react";
 import { api } from "../api";
 import type { Achievement, GameDetail } from "../types";
 import { fmtPlaytime, fmtDate, fmtNum } from "../lib/format";
@@ -43,6 +43,7 @@ export function GameDetailPage() {
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState<StatusFilter>("all");
   const [sort, setSort] = useState<SortKey>("default");
+  const [refreshingGuides, setRefreshingGuides] = useState(false);
 
   useEffect(() => {
     setGame(null);
@@ -54,6 +55,20 @@ export function GameDetailPage() {
     api.gameDetail(gameId).then(setGame).catch(() => setNotFound(true));
     api.gameAchievements(gameId).then(setAchs).catch(() => setAchs([]));
   }, [gameId]);
+
+  async function refreshGuideLinks() {
+    setRefreshingGuides(true);
+    try {
+      await api.refreshGuideLinks(gameId);
+      const [g, a] = await Promise.all([api.gameDetail(gameId), api.gameAchievements(gameId)]);
+      setGame(g);
+      setAchs(a);
+    } catch {
+      /* best-effort — leave whatever links were already there */
+    } finally {
+      setRefreshingGuides(false);
+    }
+  }
 
   function goBack() {
     // Prefer real browser back (preserves scroll position / filters on the
@@ -246,6 +261,17 @@ export function GameDetailPage() {
                   <option key={s.key} value={s.key}>{s.label}</option>
                 ))}
               </select>
+              {game && (game.platform === "steam" || game.platform === "xbox") && (
+                <button
+                  onClick={refreshGuideLinks}
+                  disabled={refreshingGuides}
+                  title="Re-check achievement guide links"
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-line/50 bg-ink-900/50 px-3 py-2 text-sm text-muted backdrop-blur-sm transition hover:text-slate-200 disabled:opacity-50"
+                >
+                  <RefreshCw size={14} className={refreshingGuides ? "animate-spin" : ""} />
+                  Guide links
+                </button>
+              )}
             </div>
 
             {achs === null ? (
