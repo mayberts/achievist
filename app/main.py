@@ -1271,22 +1271,54 @@ async def statistics_platform(platform: str, user: dict = Depends(require_user))
     return [dict(r) for r in rows]
 
 
+async def _refresh_guide_links_via_search(conn, platform_game_id: int, game: dict) -> None:
+    """
+    Look up exact achievement URLs via the Google Custom Search API instead
+    of scraping TA/TSA directly — their site blocks server-side scraping
+    (see app/platforms/trueachievements.py), but Google already has their
+    pages indexed. Bounded to GUIDE_SEARCH_MAX_PER_REFRESH lookups per call
+    to stay well under the free tier's daily quota; a game with more
+    missing achievements than that just fills in gradually over multiple
+    views, since matches are cached permanently (achievement URLs don't
+    change) and this only ever looks up achievements still missing one.
+    """
+    achievements = await db.list_unmatched_achievement_names(
+        conn, platform_game_id, trueachievements.GUIDE_SEARCH_MAX_PER_REFRESH,
+    )
+    mapping = {}
+    for a in achievements:
+        url = await trueachievements.search_achievement_url(game["platform"], game["name"], a["name"])
+        if url:
+            mapping[a["id"]] = url
+    if mapping:
+        await db.set_achievement_guide_urls(conn, mapping)
+
+
 async def _refresh_guide_links(platform_game_id: int) -> None:
     """
-    Scrapes TrueSteamAchievements/TrueAchievements for this game's
-    per-achievement links, matching by normalized name, and caches the
-    result on the achievements themselves. Runs detached (asyncio.create_task,
-    same pattern as the enrichment jobs below) rather than blocking the
-    request that triggered it — scraping an external site is slow and
-    best-effort by nature (see app/platforms/trueachievements.py), so
-    requests always serve whatever guide_url is already cached (possibly
-    none, on a game's very first load) instead of waiting on it.
+    Finds TrueSteamAchievements/TrueAchievements per-achievement links for
+    this game and caches the result on the achievements themselves. Runs
+    detached (asyncio.create_task, same pattern as the enrichment jobs
+    below) rather than blocking the request that triggered it — an external
+    lookup is slow and best-effort by nature, so requests always serve
+    whatever guide_url is already cached (possibly none, on a game's very
+    first load) instead of waiting on it.
     """
     pool = await db.get_pool()
     async with pool.connection() as conn:
         game = await _fetchrow(conn, "SELECT platform, name FROM platform_games WHERE id = %s", platform_game_id)
         if not game:
             return
+
+        if trueachievements.search_api_configured():
+            await _refresh_guide_links_via_search(conn, platform_game_id, game)
+            return  # no 30-day gate for this path — see _maybe_schedule_guide_refresh
+
+        # Fallback: the direct-scrape approach. TA/TSA's bot protection
+        # blocks this in practice (see app/platforms/trueachievements.py's
+        # docstring), so this mostly just confirms there's nothing to find —
+        # kept as a cheap opportunistic attempt in case that ever changes,
+        # and so an unconfigured deployment doesn't silently do nothing.
         links = await trueachievements.fetch_achievement_links(game["platform"], game["name"])
         if links:
             # A non-empty result means the guessed/overridden slug actually
@@ -1307,7 +1339,13 @@ async def _refresh_guide_links(platform_game_id: int) -> None:
 
 
 async def _maybe_schedule_guide_refresh(conn, platform_game_id: int) -> None:
-    if await db.guide_links_need_refresh(conn, platform_game_id):
+    if trueachievements.search_api_configured():
+        # No 30-day gate here — only ever looks up achievements still
+        # missing a link (bounded per call), so repeat views just
+        # naturally taper off to zero work once everything's matched.
+        if await db.has_unmatched_achievements(conn, platform_game_id):
+            asyncio.create_task(_refresh_guide_links(platform_game_id))
+    elif await db.guide_links_need_refresh(conn, platform_game_id):
         asyncio.create_task(_refresh_guide_links(platform_game_id))
 
 

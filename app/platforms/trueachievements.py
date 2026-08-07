@@ -16,7 +16,15 @@ import unicodedata
 
 import httpx
 
+from app import config
+
 log = logging.getLogger(__name__)
+
+# How many achievements to look up per refresh when using the Google Custom
+# Search API — bounds quota usage (free tier is 100 queries/day) per call;
+# a game with more locked achievements than this just fills in gradually
+# over multiple views, since results are cached permanently once found.
+GUIDE_SEARCH_MAX_PER_REFRESH = 8
 
 _HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -39,6 +47,17 @@ _BASE_URL = {
     "steam": "https://truesteamachievements.com",
     "xbox": "https://www.trueachievements.com",
 }
+_SEARCH_DOMAIN = {
+    "steam": "truesteamachievements.com",
+    "xbox": "trueachievements.com",
+}
+
+# A real achievement permalink on either site, e.g.
+# https://truesteamachievements.com/a2453/and-theyll-tell-two-friends-achievement
+_ACH_PERMALINK_RE = re.compile(
+    r"^https://(?:www\.)?(?:truesteamachievements|trueachievements)\.com/a\d+/[a-z0-9-]+-achievement/?$",
+    re.IGNORECASE,
+)
 
 # An achievement permalink, e.g.
 # /a2453/and-theyll-tell-two-friends-achievement
@@ -126,3 +145,49 @@ async def fetch_achievement_links(platform: str, game_name: str) -> dict[str, st
 
     log.info("TrueAchievements scrape %r: %d links found", game_name, len(links))
     return links
+
+
+def search_api_configured() -> bool:
+    return bool(config.GOOGLE_SEARCH_API_KEY and config.GOOGLE_SEARCH_ENGINE_ID)
+
+
+async def search_achievement_url(platform: str, game_name: str, achievement_name: str) -> str | None:
+    """
+    Find a specific achievement's real TSA/TA permalink via the Google
+    Custom Search JSON API, since their site blocks scraping the page
+    directly (see fetch_achievement_links's docstring above) but Google
+    already has it indexed. Returns None on any failure, missing config,
+    unsupported platform, or if nothing in the results actually looks like
+    a real achievement permalink (never trust a result blindly).
+    """
+    if not search_api_configured():
+        return None
+    domain = _SEARCH_DOMAIN.get(platform)
+    if not domain:
+        return None
+
+    query = f'site:{domain} "{game_name}" "{achievement_name}"'
+    params = {
+        "key": config.GOOGLE_SEARCH_API_KEY,
+        "cx": config.GOOGLE_SEARCH_ENGINE_ID,
+        "q": query,
+        "num": 3,
+    }
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            resp = await client.get("https://www.googleapis.com/customsearch/v1", params=params)
+    except httpx.HTTPError as e:
+        log.warning("Guide search failed for %r / %r: %s", game_name, achievement_name, e)
+        return None
+
+    if resp.status_code != 200:
+        log.warning(
+            "Guide search HTTP %d for %r / %r: %s", resp.status_code, game_name, achievement_name, resp.text[:300],
+        )
+        return None
+
+    for item in resp.json().get("items", []):
+        link = item.get("link", "")
+        if _ACH_PERMALINK_RE.match(link):
+            return link
+    return None

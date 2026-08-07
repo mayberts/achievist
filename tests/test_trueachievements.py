@@ -6,7 +6,7 @@ scraper) and the guide-link caching plumbing in app/db.py.
 import httpx
 import pytest
 
-from app import db
+from app import config, db
 from app.platforms import trueachievements as ta
 from tests.conftest import requires_db
 
@@ -82,6 +82,51 @@ async def test_fetch_achievement_links_returns_empty_on_http_error(monkeypatch):
     assert links == {}
 
 
+async def test_search_achievement_url_returns_none_when_not_configured(monkeypatch):
+    monkeypatch.setattr(config, "GOOGLE_SEARCH_API_KEY", "")
+    monkeypatch.setattr(config, "GOOGLE_SEARCH_ENGINE_ID", "")
+    assert ta.search_api_configured() is False
+    assert await ta.search_achievement_url("steam", "Team Fortress 2", "First Blood") is None
+
+
+async def test_search_achievement_url_only_trusts_real_permalinks(monkeypatch):
+    monkeypatch.setattr(config, "GOOGLE_SEARCH_API_KEY", "fake-key")
+    monkeypatch.setattr(config, "GOOGLE_SEARCH_ENGINE_ID", "fake-cx")
+    assert ta.search_api_configured() is True
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={
+            "items": [
+                {"link": "https://truesteamachievements.com/game/Team-Fortress-2/achievements"},
+                {"link": "https://truesteamachievements.com/a2453/and-theyll-tell-two-friends-achievement"},
+            ]
+        })
+
+    real_async_client = httpx.AsyncClient
+    monkeypatch.setattr(
+        httpx, "AsyncClient", lambda **kw: real_async_client(transport=httpx.MockTransport(handler), **kw)
+    )
+    url = await ta.search_achievement_url("steam", "Team Fortress 2", "And They'll Tell Two Friends")
+    assert url == "https://truesteamachievements.com/a2453/and-theyll-tell-two-friends-achievement"
+
+
+async def test_search_achievement_url_returns_none_if_no_result_is_a_permalink(monkeypatch):
+    monkeypatch.setattr(config, "GOOGLE_SEARCH_API_KEY", "fake-key")
+    monkeypatch.setattr(config, "GOOGLE_SEARCH_ENGINE_ID", "fake-cx")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={
+            "items": [{"link": "https://truesteamachievements.com/game/Team-Fortress-2/achievements"}]
+        })
+
+    real_async_client = httpx.AsyncClient
+    monkeypatch.setattr(
+        httpx, "AsyncClient", lambda **kw: real_async_client(transport=httpx.MockTransport(handler), **kw)
+    )
+    url = await ta.search_achievement_url("steam", "Team Fortress 2", "First Blood")
+    assert url is None
+
+
 async def test_guide_links_need_refresh_true_until_marked_fetched(db_conn):
     game = await db.upsert_platform_game(db_conn, "steam", "440", "Team Fortress 2", None, 1)
     await db_conn.commit()
@@ -133,3 +178,33 @@ async def test_clear_guide_links_resets_the_30_day_cache(db_conn):
     assert row["guide_url"] is None
     ach_row = await db._fetchrow(db_conn, "SELECT guide_url FROM achievements WHERE id = %s", a1)
     assert ach_row["guide_url"] is None
+
+
+async def test_has_unmatched_achievements_and_list_unmatched(db_conn):
+    game = await db.upsert_platform_game(db_conn, "steam", "440", "Team Fortress 2", None, 2)
+    a1 = await db.upsert_achievement(db_conn, game, "a1", "First Blood", "", None, 10, None)
+    a2 = await db.upsert_achievement(db_conn, game, "a2", "Domination", "", None, 10, None)
+    await db_conn.commit()
+
+    assert await db.has_unmatched_achievements(db_conn, game) is True
+    unmatched = await db.list_unmatched_achievement_names(db_conn, game, limit=10)
+    assert {u["id"] for u in unmatched} == {a1, a2}
+
+    await db.set_achievement_guide_urls(db_conn, {
+        a1: "https://truesteamachievements.com/a1/first-blood",
+        a2: "https://truesteamachievements.com/a2/domination",
+    })
+    await db_conn.commit()
+
+    assert await db.has_unmatched_achievements(db_conn, game) is False
+    assert await db.list_unmatched_achievement_names(db_conn, game, limit=10) == []
+
+
+async def test_list_unmatched_achievement_names_respects_limit(db_conn):
+    game = await db.upsert_platform_game(db_conn, "steam", "440", "Team Fortress 2", None, 3)
+    for i in range(3):
+        await db.upsert_achievement(db_conn, game, f"a{i}", f"Achievement {i}", "", None, 10, None)
+    await db_conn.commit()
+
+    unmatched = await db.list_unmatched_achievement_names(db_conn, game, limit=2)
+    assert len(unmatched) == 2
