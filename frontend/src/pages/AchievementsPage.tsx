@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { Search, Trophy, Lock, Gamepad2 } from "lucide-react";
+import { Search, Trophy, Lock, Gamepad2, ExternalLink } from "lucide-react";
 import { api } from "../api";
 import type { AchievementSearchResult } from "../types";
 import { fmtDate } from "../lib/format";
 import { RARITY_TIER_CLASS, rarityTier } from "../lib/rarity";
+import { guideSearchUrl } from "../lib/guideLink";
 import { PlatformBadge } from "../components/PlatformBadge";
 
 const RARITIES = ["", "Legendary", "Epic", "Rare", "Uncommon", "Common"];
@@ -168,9 +169,14 @@ export function AchievementsPage() {
             const art = a.sgdb_cover_url || a.game_icon_url;
             return (
               <li key={`${a.platform_game_id}-${a.platform_ach_id}`}>
-                <button
+                <div
+                  role="button"
+                  tabIndex={0}
                   onClick={() => navigate(`/games/${a.platform_game_id}`)}
-                  className={`flex w-full items-center gap-3 rounded-lg border border-line bg-ink-850 p-2.5 text-left transition hover:border-ink-600 hover:bg-ink-800 ${isUnlocked ? "" : "opacity-70"}`}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") navigate(`/games/${a.platform_game_id}`);
+                  }}
+                  className={`flex w-full cursor-pointer items-center gap-3 rounded-lg border border-line bg-ink-850 p-2.5 text-left transition hover:border-ink-600 hover:bg-ink-800 ${isUnlocked ? "" : "opacity-70"}`}
                 >
                   <div className="relative h-11 w-11 flex-shrink-0 overflow-hidden rounded-md bg-ink-900">
                     {a.icon_url ? (
@@ -218,7 +224,20 @@ export function AchievementsPage() {
                       <div className="text-[11px] text-faint">{fmtDate(a.unlocked_at)}</div>
                     )}
                   </div>
-                </button>
+
+                  {!isUnlocked && (
+                    <a
+                      href={guideSearchUrl(a.platform, a.game_name, a.name)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={(e) => e.stopPropagation()}
+                      title="Find a guide for this achievement"
+                      className="flex-shrink-0 rounded-md p-1.5 text-faint transition hover:bg-ink-700 hover:text-accent"
+                    >
+                      <ExternalLink size={14} />
+                    </a>
+                  )}
+                </div>
               </li>
             );
           })}

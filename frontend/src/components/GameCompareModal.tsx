@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
-import { X, Check, Lock, Trophy } from "lucide-react";
+import { X, Check, Lock, Trophy, ExternalLink } from "lucide-react";
 import { api } from "../api";
 import type { GameComparison } from "../types";
 import { platformLabel } from "../lib/platforms";
 import { RARITY_TIER_CLASS, rarityTier } from "../lib/rarity";
+import { guideSearchUrl } from "../lib/guideLink";
 import { fmtDate } from "../lib/format";
 
 export function GameCompareModal({
@@ -97,6 +98,15 @@ export function GameCompareModal({
                           </div>
                         );
                       })}
+                      <a
+                        href={guideSearchUrl(data.game.platform, data.game.name, a.name)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        title="Find a guide for this achievement"
+                        className="flex-shrink-0 rounded-md p-1.5 text-faint transition hover:bg-ink-700 hover:text-accent"
+                      >
+                        <ExternalLink size={14} />
+                      </a>
                     </div>
                   );
                 })}
