@@ -621,6 +621,26 @@ async def list_achievement_names(conn, platform_game_id: int) -> list[dict]:
     )
 
 
+async def list_unmatched_achievement_names(conn, platform_game_id: int, limit: int) -> list[dict]:
+    """Achievements still missing a guide_url, oldest/lowest-id first, capped for quota-bounded lookups."""
+    return await _fetch(
+        conn,
+        "SELECT id, name FROM achievements "
+        "WHERE platform_game_id = %s AND name IS NOT NULL AND guide_url IS NULL "
+        "ORDER BY id LIMIT %s",
+        platform_game_id, limit,
+    )
+
+
+async def has_unmatched_achievements(conn, platform_game_id: int) -> bool:
+    row = await _fetchrow(
+        conn,
+        "SELECT EXISTS (SELECT 1 FROM achievements WHERE platform_game_id = %s AND guide_url IS NULL) AS has_any",
+        platform_game_id,
+    )
+    return bool(row and row["has_any"])
+
+
 async def set_achievement_guide_urls(conn, mapping: dict[int, str]) -> None:
     for achievement_id, url in mapping.items():
         await conn.execute(

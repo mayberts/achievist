@@ -40,6 +40,17 @@ EXOPHASE_REMEMBERME = os.getenv("EXOPHASE_REMEMBERME", "")
 EXOPHASE_XF_USER = os.getenv("EXOPHASE_XF_USER", "")
 EXOPHASE_ACCESS_TOKEN = os.getenv("EXOPHASE_ACCESS_TOKEN", "")
 
+# Optional: Google Custom Search JSON API, used to find exact
+# TrueAchievements/TrueSteamAchievements achievement URLs (their site blocks
+# direct server-side scraping — see app/platforms/trueachievements.py).
+# Free tier is 100 queries/day. Get a key at
+# https://developers.google.com/custom-search/v1/introduction and create a
+# search engine at https://programmablesearchengine.google.com/ (restrict it
+# to trueachievements.com + truesteamachievements.com, or enable "search the
+# entire web").
+GOOGLE_SEARCH_API_KEY = os.getenv("GOOGLE_SEARCH_API_KEY", "")
+GOOGLE_SEARCH_ENGINE_ID = os.getenv("GOOGLE_SEARCH_ENGINE_ID", "")
+
 
 def enabled_accounts() -> list[dict]:
     from app.xbox_auth import load_refresh_token

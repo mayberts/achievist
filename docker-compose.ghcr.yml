@@ -28,6 +28,12 @@ services:
       IGDB_CLIENT_ID: ${IGDB_CLIENT_ID:-}
       IGDB_CLIENT_SECRET: ${IGDB_CLIENT_SECRET:-}
       SGDB_API_KEY: ${SGDB_API_KEY:-}
+      # Optional: enables exact per-achievement TrueAchievements/
+      # TrueSteamAchievements guide links (see app/platforms/
+      # trueachievements.py for setup details). Without these, achievement
+      # guide links still work via a best-effort guessed game-page link.
+      GOOGLE_SEARCH_API_KEY: ${GOOGLE_SEARCH_API_KEY:-}
+      GOOGLE_SEARCH_ENGINE_ID: ${GOOGLE_SEARCH_ENGINE_ID:-}
       SYNC_INTERVAL_HOURS: ${SYNC_INTERVAL_HOURS:-12}
       REQUEST_DELAY_SECONDS: ${REQUEST_DELAY_SECONDS:-0.4}
       BACKUP_KEEP_COUNT: ${BACKUP_KEEP_COUNT:-14}
