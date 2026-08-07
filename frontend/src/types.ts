@@ -72,6 +72,7 @@ export interface GameComparisonAchievement {
   icon_url: string | null;
   points: number | null;
   rarity_pct: number | null;
+  guide_url: string | null;
   per_user: GameComparisonUnlock[];
 }
 
@@ -153,6 +154,7 @@ export interface Achievement {
   icon_url: string | null;
   points: number | null;
   rarity_pct: number | null;
+  guide_url: string | null;
   unlocked: boolean | null;
   unlocked_at: string | null;
 }

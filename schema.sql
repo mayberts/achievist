@@ -103,6 +103,10 @@ ALTER TABLE platform_games ADD COLUMN IF NOT EXISTS igdb_id       BIGINT REFEREN
 ALTER TABLE platform_games ADD COLUMN IF NOT EXISTS store_id      TEXT;
 ALTER TABLE platform_games ADD COLUMN IF NOT EXISTS xbox_pfn      TEXT;
 ALTER TABLE platform_games ADD COLUMN IF NOT EXISTS sgdb_cover_url TEXT;
+-- When achievement-level TrueAchievements/TrueSteamAchievements links were
+-- last scraped for this game, so it's only re-fetched occasionally rather
+-- than on every request.
+ALTER TABLE platform_games ADD COLUMN IF NOT EXISTS guide_links_fetched_at TIMESTAMPTZ;
 -- Clear previously stored store_ids so the improved title-match check re-validates them
 UPDATE platform_games SET store_id = NULL WHERE platform = 'xbox' AND store_id IS NOT NULL;
 
@@ -115,8 +119,10 @@ CREATE TABLE IF NOT EXISTS achievements (
     icon_url            TEXT,
     points              INT,                 -- gamerscore / RA points / trophy weight
     rarity_pct          NUMERIC,             -- global unlock percentage
+    guide_url           TEXT,                -- scraped TrueAchievements/TrueSteamAchievements permalink, if matched
     UNIQUE (platform_game_id, platform_ach_id)
 );
+ALTER TABLE achievements ADD COLUMN IF NOT EXISTS guide_url TEXT;
 
 CREATE TABLE IF NOT EXISTS user_achievements (
     id                  SERIAL PRIMARY KEY,

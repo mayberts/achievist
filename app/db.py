@@ -281,7 +281,7 @@ async def get_game_comparison(conn, requesting_user_id: int, platform_game_id: i
         """
         SELECT
             a.id, a.platform_ach_id, a.name, a.description, a.icon_url,
-            a.points, a.rarity_pct,
+            a.points, a.rarity_pct, a.guide_url,
             json_agg(
                 json_build_object(
                     'user_id', o.user_id,
@@ -302,7 +302,7 @@ async def get_game_comparison(conn, requesting_user_id: int, platform_game_id: i
         ) o
         LEFT JOIN user_achievements ua ON ua.achievement_id = a.id AND ua.linked_account_id = o.linked_account_id
         WHERE a.platform_game_id = %s
-        GROUP BY a.id, a.platform_ach_id, a.name, a.description, a.icon_url, a.points, a.rarity_pct
+        GROUP BY a.id, a.platform_ach_id, a.name, a.description, a.icon_url, a.points, a.rarity_pct, a.guide_url
         ORDER BY a.rarity_pct ASC NULLS LAST, a.name
         """,
         platform_game_id, requesting_user_id, platform_game_id,
@@ -587,6 +587,52 @@ async def upsert_achievement(conn, platform_game_id: int, platform_ach_id: str,
         platform_game_id, platform_ach_id, name, description, icon_url, points, rarity_pct,
     )
     return row["id"]
+
+
+# ── TrueAchievements/TrueSteamAchievements guide links ──────────────────────
+
+_GUIDE_REFRESH_INTERVAL = "30 days"
+
+
+async def guide_links_need_refresh(conn, platform_game_id: int) -> bool:
+    row = await _fetchrow(
+        conn,
+        "SELECT platform, guide_links_fetched_at FROM platform_games WHERE id = %s",
+        platform_game_id,
+    )
+    if not row or row["platform"] not in ("steam", "xbox"):
+        return False
+    if row["guide_links_fetched_at"] is None:
+        return True
+    stale = await _fetchrow(
+        conn,
+        f"SELECT (guide_links_fetched_at < now() - interval '{_GUIDE_REFRESH_INTERVAL}') AS stale "
+        "FROM platform_games WHERE id = %s",
+        platform_game_id,
+    )
+    return bool(stale and stale["stale"])
+
+
+async def list_achievement_names(conn, platform_game_id: int) -> list[dict]:
+    return await _fetch(
+        conn,
+        "SELECT id, name FROM achievements WHERE platform_game_id = %s AND name IS NOT NULL",
+        platform_game_id,
+    )
+
+
+async def set_achievement_guide_urls(conn, mapping: dict[int, str]) -> None:
+    for achievement_id, url in mapping.items():
+        await conn.execute(
+            "UPDATE achievements SET guide_url = %s WHERE id = %s", (url, achievement_id),
+        )
+
+
+async def mark_guide_links_fetched(conn, platform_game_id: int) -> None:
+    await conn.execute(
+        "UPDATE platform_games SET guide_links_fetched_at = now() WHERE id = %s",
+        (platform_game_id,),
+    )
 
 
 async def get_earned_counts(conn, linked_account_id: int) -> dict[str, dict]:
