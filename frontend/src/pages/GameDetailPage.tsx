@@ -7,7 +7,7 @@ import { fmtPlaytime, fmtDate, fmtNum } from "../lib/format";
 import { PlatformBadge } from "../components/PlatformBadge";
 import { PLATFORM_META } from "../lib/platforms";
 import { RARITY_TIER_CLASS, RARITY_TIER_HEX, rarityTier } from "../lib/rarity";
-import { guideSearchUrl } from "../lib/guideLink";
+import { gameDirectUrl, guideSearchUrl } from "../lib/guideLink";
 import { ChangeCoverModal } from "../components/ChangeCoverModal";
 
 function banner(g: GameDetail): string | null {
@@ -324,7 +324,12 @@ export function GameDetailPage() {
                       </div>
                       {!unlocked && game && (
                         <a
-                          href={a.guide_url || game.guide_url || guideSearchUrl(game.platform, game.name, a.name)}
+                          href={
+                            a.guide_url ||
+                            game.guide_url ||
+                            gameDirectUrl(game.platform, game.name) ||
+                            guideSearchUrl(game.platform, game.name, a.name)
+                          }
                           target="_blank"
                           rel="noopener noreferrer"
                           title="Find a guide for this achievement"
