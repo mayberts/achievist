@@ -14,12 +14,12 @@
   <rect x="4" y="4" width="504" height="504" rx="100" fill="none" stroke="#232c42" stroke-width="4"/>
 
   <!-- five-point star accent -->
-  <polygon points="256,54 269,90 307,90 276,113 288,150 256,128 224,150 236,113 205,90 243,90"
+  <polygon points="256,72 271,113 315,113 280,138 293,180 256,155 219,180 232,138 197,113 241,113"
            fill="#f0b429"/>
 
   <!-- trophy mark (lucide trophy glyph, scaled up) -->
-  <g transform="translate(95,150) scale(13.5)" fill="none" stroke="url(#trophy)"
-     stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+  <g transform="translate(76,178) scale(15.6)" fill="none" stroke="url(#trophy)"
+     stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
     <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/>
     <path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/>
     <path d="M4 22h16"/>
@@ -27,8 +27,4 @@
     <path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/>
     <path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/>
   </g>
-
-  <!-- wordmark -->
-  <text x="256" y="440" text-anchor="middle" font-family="Inter, Arial, sans-serif"
-        font-weight="800" font-size="64" letter-spacing="-1" fill="#f1f4fa">Achievist</text>
 </svg>
