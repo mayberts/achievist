@@ -39,20 +39,41 @@ _ACH_LINK_RE = re.compile(
     re.IGNORECASE,
 )
 
+# TSA/TA spell out edition abbreviations that platform store names often
+# shorten (e.g. Steam calls it "Borderlands GOTY Enhanced", TSA lists it as
+# "Borderlands: Game of the Year Enhanced") — word-boundary substitutions,
+# applied before slugifying.
+_ABBREVIATION_EXPANSIONS = {
+    r"\bGOTY\b": "Game of the Year",
+    r"\bGOTYE\b": "Game of the Year Edition",
+    r"\bDE\b": "Definitive Edition",
+}
+
+# Known-correct slug for a specific (platform, our-own-stored-name) pair,
+# for cases the abbreviation expansion above doesn't catch. Add an entry
+# here whenever a real mismatch is reported — see app/platforms/
+# trueachievements.py's module docstring for why guessing can't be 100%.
+_SLUG_OVERRIDES: dict[tuple[str, str], str] = {
+    ("steam", "borderlandsgotyenhanced"): "Borderlands-Game-of-the-Year-Enhanced",
+}
+
 
 def slugify(name: str) -> str:
     """'Borderlands' -> 'Borderlands'; strips trademark/punctuation, spaces to dashes."""
+    expanded = name
+    for pattern, replacement in _ABBREVIATION_EXPANSIONS.items():
+        expanded = re.sub(pattern, replacement, expanded, flags=re.IGNORECASE)
     # Strip trademark/copyright symbols *before* NFKD — NFKD's compatibility
     # decomposition expands "™" into the literal letters "TM", which would
     # otherwise survive as visible text instead of being removed.
-    stripped = re.sub(r"[™®©'’]", "", name)
+    stripped = re.sub(r"[™®©'’]", "", expanded)
     normalized = unicodedata.normalize("NFKD", stripped)
     normalized = re.sub(r"[^a-zA-Z0-9]+", "-", normalized).strip("-")
     return normalized
 
 
 def normalize_name(name: str) -> str:
-    """Loose match key for an achievement name: lowercase, alnum only."""
+    """Loose match key for an achievement (or game) name: lowercase, alnum only."""
     return re.sub(r"[^a-z0-9]", "", name.lower())
 
 
@@ -60,7 +81,9 @@ def game_url(platform: str, game_name: str) -> str | None:
     template = _GAME_URL_TEMPLATE.get(platform)
     if not template:
         return None
-    return template.format(slug=slugify(game_name))
+    override = _SLUG_OVERRIDES.get((platform, normalize_name(game_name)))
+    slug = override or slugify(game_name)
+    return template.format(slug=slug)
 
 
 async def fetch_achievement_links(platform: str, game_name: str) -> dict[str, str]:

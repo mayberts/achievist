@@ -36,6 +36,20 @@ def test_game_url_only_supports_steam_and_xbox():
     assert ta.game_url("psn", "Some Game") is None
 
 
+def test_slugify_expands_common_edition_abbreviations():
+    assert ta.slugify("Borderlands GOTY Enhanced") == "Borderlands-Game-of-the-Year-Enhanced"
+
+
+def test_game_url_applies_manual_slug_overrides():
+    # Confirmed real slug for this one (reported broken — TSA spells out
+    # "Game of the Year" even beyond what the abbreviation expansion alone
+    # produces from Steam's own "GOTY" app name).
+    assert (
+        ta.game_url("steam", "Borderlands GOTY Enhanced")
+        == "https://truesteamachievements.com/game/Borderlands-Game-of-the-Year-Enhanced/achievements"
+    )
+
+
 async def test_fetch_achievement_links_parses_permalinks(monkeypatch):
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, text=_FRAGMENT)

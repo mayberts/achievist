@@ -1,35 +1,19 @@
-// TrueAchievements/TrueSteamAchievements (same company, same URL scheme —
-// TSA for Steam, TA for Xbox) key their game pages off a simple slug of the
-// game's name, e.g. "Borderlands" -> /game/Borderlands/achievements. Good
-// enough for straightforward titles; unusual punctuation/subtitles can still
-// miss, but it lands on the right site's search at worst.
-function slugify(name: string): string {
-  return name
-    .normalize("NFKD")
-    .replace(/[™®©]/g, "")
-    .replace(/['’]/g, "")
-    .replace(/[^a-zA-Z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-}
-
-const DIRECT_GAME_PAGE: Record<string, (slug: string) => string> = {
-  steam: (slug) => `https://truesteamachievements.com/game/${slug}/achievements`,
-  xbox: (slug) => `https://www.trueachievements.com/game/${slug}/achievements`,
-};
-
-// For platforms without a reliable name-based URL (PSNProfiles/RetroAchievements
-// key games by internal numeric ids we don't have), fall back to a Google
-// search scoped to whichever site tends to have the best guides there, via
-// the `site:` operator.
+// This is the *last-resort* fallback, used only when the backend hasn't
+// (yet, or ever) confirmed a real TrueSteamAchievements/TrueAchievements
+// link for this achievement/game — see app/platforms/trueachievements.py.
+// Guessing a game's TSA/TA slug client-side from our own stored name isn't
+// safe to link to directly: edition/subtitle abbreviations (Steam's
+// "Borderlands GOTY Enhanced" vs. TSA's "Borderlands: Game of the Year
+// Enhanced") mean an unconfirmed guess is wrong often enough to land on a
+// dead page. A scoped Google search always lands on *something* relevant.
 const GUIDE_SITE_BY_PLATFORM: Record<string, string> = {
+  steam: "truesteamachievements.com",
+  xbox: "trueachievements.com",
   psn: "psnprofiles.com",
   retroachievements: "retroachievements.org",
 };
 
 export function guideSearchUrl(platform: string, gameName: string, achievementName?: string | null): string {
-  const direct = DIRECT_GAME_PAGE[platform];
-  if (direct) return direct(slugify(gameName));
-
   const site = GUIDE_SITE_BY_PLATFORM[platform];
   const terms = [gameName, achievementName, "achievement", "guide"].filter(Boolean).join(" ");
   const query = site ? `site:${site} ${gameName} ${achievementName ?? ""}`.trim() : terms;
