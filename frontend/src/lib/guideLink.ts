@@ -36,9 +36,24 @@ const DIRECT_GAME_PAGE: Record<string, (slug: string) => string> = {
   xbox: (slug) => `https://www.trueachievements.com/game/${slug}/achievements`,
 };
 
+function normalizeName(name: string): string {
+  return name.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+// Mirrors app/platforms/trueachievements.py's _SLUG_OVERRIDES — keep the
+// two in sync when adding entries. Needed when our stored name is missing
+// information (a subtitle, edition text) no amount of slug-massaging can
+// recover.
+const SLUG_OVERRIDES: Record<string, Record<string, string>> = {
+  steam: { borderlandsgotyenhanced: "Borderlands-Game-of-the-Year-Enhanced" },
+  xbox: { guitarheroiii: "Guitar-Hero-3-Legends-of-Rock" },
+};
+
 export function gameDirectUrl(platform: string, gameName: string): string | null {
   const direct = DIRECT_GAME_PAGE[platform];
-  return direct ? direct(slugify(gameName)) : null;
+  if (!direct) return null;
+  const override = SLUG_OVERRIDES[platform]?.[normalizeName(gameName)];
+  return direct(override || slugify(gameName));
 }
 
 // True last resort — used when there's no server-confirmed link and no

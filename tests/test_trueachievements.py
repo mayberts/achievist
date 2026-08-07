@@ -48,6 +48,13 @@ def test_game_url_applies_manual_slug_overrides():
         ta.game_url("steam", "Borderlands GOTY Enhanced")
         == "https://truesteamachievements.com/game/Borderlands-Game-of-the-Year-Enhanced/achievements"
     )
+    # Xbox's own name for this is just "Guitar Hero III" — missing the
+    # "Legends of Rock" subtitle TA's real slug includes, which slugify()
+    # alone could never recover.
+    assert (
+        ta.game_url("xbox", "Guitar Hero III")
+        == "https://www.trueachievements.com/game/Guitar-Hero-3-Legends-of-Rock/achievements"
+    )
 
 
 async def test_fetch_achievement_links_parses_permalinks(monkeypatch):

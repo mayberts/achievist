@@ -63,6 +63,11 @@ _ABBREVIATION_EXPANSIONS = {
 # trueachievements.py's module docstring for why guessing can't be 100%.
 _SLUG_OVERRIDES: dict[tuple[str, str], str] = {
     ("steam", "borderlandsgotyenhanced"): "Borderlands-Game-of-the-Year-Enhanced",
+    # Xbox's own name for this is just "Guitar Hero III" — missing the
+    # "Legends of Rock" subtitle TA's slug includes, which no amount of
+    # slug-massaging can recover since the data simply isn't in our stored
+    # name at all.
+    ("xbox", "guitarheroiii"): "Guitar-Hero-3-Legends-of-Rock",
 }
 
 
