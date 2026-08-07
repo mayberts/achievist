@@ -14,8 +14,8 @@
   <rect x="4" y="4" width="504" height="504" rx="100" fill="none" stroke="#1f3a30" stroke-width="4"/>
 
   <!-- database cylinder (lucide database glyph, scaled up) — the data layer -->
-  <g transform="translate(96,120) scale(13.5)" fill="none" stroke="url(#cyl)"
-     stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+  <g transform="translate(90,150) scale(15.5)" fill="none" stroke="url(#cyl)"
+     stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
     <ellipse cx="12" cy="5" rx="9" ry="3"/>
     <path d="M3 5V19A9 3 0 0 0 21 19V5"/>
     <path d="M3 12A9 3 0 0 0 21 12"/>
@@ -32,10 +32,4 @@
     <path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/>
     <path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/>
   </g>
-
-  <!-- wordmark -->
-  <text x="256" y="410" text-anchor="middle" font-family="Inter, Arial, sans-serif"
-        font-weight="800" font-size="56" letter-spacing="-1" fill="#f1f4fa">Achievist</text>
-  <text x="256" y="452" text-anchor="middle" font-family="Inter, Arial, sans-serif"
-        font-weight="700" font-size="30" letter-spacing="3" fill="#3ecf8e">DATABASE</text>
 </svg>
