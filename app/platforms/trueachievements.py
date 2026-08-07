@@ -87,6 +87,9 @@ _SLUG_OVERRIDES: dict[tuple[str, str], str] = {
     # slug-massaging can recover since the data simply isn't in our stored
     # name at all.
     ("xbox", "guitarheroiii"): "Guitar-Hero-3-Legends-of-Rock",
+    # TA spells the Guitar Hero series with Arabic numerals, not the roman
+    # numerals Xbox's own titles use.
+    ("xbox", "guitarheroii"): "Guitar-Hero-2",
 }
 
 

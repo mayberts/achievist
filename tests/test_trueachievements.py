@@ -55,6 +55,11 @@ def test_game_url_applies_manual_slug_overrides():
         ta.game_url("xbox", "Guitar Hero III")
         == "https://www.trueachievements.com/game/Guitar-Hero-3-Legends-of-Rock/achievements"
     )
+    # TA uses Arabic numerals for this series, not Xbox's roman numerals.
+    assert (
+        ta.game_url("xbox", "Guitar Hero II")
+        == "https://www.trueachievements.com/game/Guitar-Hero-2/achievements"
+    )
 
 
 async def test_fetch_achievement_links_parses_permalinks(monkeypatch):
