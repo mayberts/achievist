@@ -14,12 +14,12 @@
   <rect x="4" y="4" width="504" height="504" rx="100" fill="none" stroke="#232c42" stroke-width="4"/>
 
   <!-- five-point star accent -->
-  <polygon points="256,72 271,113 315,113 280,138 293,180 256,155 219,180 232,138 197,113 241,113"
+  <polygon points="256,88 269,124 307,124 276,147 288,184 256,162 224,184 236,147 205,124 243,124"
            fill="#f0b429"/>
 
   <!-- trophy mark (lucide trophy glyph, scaled up) -->
-  <g transform="translate(76,178) scale(15.6)" fill="none" stroke="url(#trophy)"
-     stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+  <g transform="translate(98,200) scale(13.2)" fill="none" stroke="url(#trophy)"
+     stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
     <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/>
     <path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/>
     <path d="M4 22h16"/>
