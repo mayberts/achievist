@@ -106,3 +106,23 @@ async def test_set_achievement_guide_urls_updates_the_right_rows(db_conn):
     assert by_id[a1] == "https://truesteamachievements.com/a1/first-blood"
     assert by_id[a2] is None
     assert {n["id"] for n in names} == {a1, a2}
+
+
+async def test_clear_guide_links_resets_the_30_day_cache(db_conn):
+    game = await db.upsert_platform_game(db_conn, "steam", "440", "Team Fortress 2", None, 1)
+    a1 = await db.upsert_achievement(db_conn, game, "a1", "First Blood", "", None, 10, None)
+    await db.set_achievement_guide_urls(db_conn, {a1: "https://truesteamachievements.com/a1/first-blood"})
+    await db.set_platform_game_guide_url(db_conn, game, "https://truesteamachievements.com/game/Wrong-Slug/achievements")
+    await db.mark_guide_links_fetched(db_conn, game)
+    await db_conn.commit()
+
+    assert await db.guide_links_need_refresh(db_conn, game) is False
+
+    await db.clear_guide_links(db_conn, game)
+    await db_conn.commit()
+
+    assert await db.guide_links_need_refresh(db_conn, game) is True
+    row = await db._fetchrow(db_conn, "SELECT guide_url FROM platform_games WHERE id = %s", game)
+    assert row["guide_url"] is None
+    ach_row = await db._fetchrow(db_conn, "SELECT guide_url FROM achievements WHERE id = %s", a1)
+    assert ach_row["guide_url"] is None
