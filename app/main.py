@@ -15,6 +15,7 @@ from fastapi.staticfiles import StaticFiles
 from app import auth, backup, config, db, hltb as hltb_names
 from app.db import _fetch, _fetchrow
 from app.platforms import PLATFORMS
+from app.platforms import trueachievements
 
 logging.basicConfig(level=logging.INFO)
 logging.getLogger("httpx").setLevel(logging.WARNING)
@@ -609,6 +610,7 @@ async def leaderboard_games(user: dict = Depends(require_user)):
 async def compare_game_achievements(platform_game_id: int, user: dict = Depends(require_user)):
     pool = await db.get_pool()
     async with pool.connection() as conn:
+        await _maybe_schedule_guide_refresh(conn, platform_game_id)
         result = await db.get_game_comparison(conn, user["id"], platform_game_id)
     if not result:
         raise HTTPException(status_code=404, detail="Game not found in your library")
@@ -1268,10 +1270,45 @@ async def statistics_platform(platform: str, user: dict = Depends(require_user))
     return [dict(r) for r in rows]
 
 
+async def _refresh_guide_links(platform_game_id: int) -> None:
+    """
+    Scrapes TrueSteamAchievements/TrueAchievements for this game's
+    per-achievement links, matching by normalized name, and caches the
+    result on the achievements themselves. Runs detached (asyncio.create_task,
+    same pattern as the enrichment jobs below) rather than blocking the
+    request that triggered it — scraping an external site is slow and
+    best-effort by nature (see app/platforms/trueachievements.py), so
+    requests always serve whatever guide_url is already cached (possibly
+    none, on a game's very first load) instead of waiting on it.
+    """
+    pool = await db.get_pool()
+    async with pool.connection() as conn:
+        game = await _fetchrow(conn, "SELECT platform, name FROM platform_games WHERE id = %s", platform_game_id)
+        if not game:
+            return
+        links = await trueachievements.fetch_achievement_links(game["platform"], game["name"])
+        if links:
+            achievements = await db.list_achievement_names(conn, platform_game_id)
+            mapping = {
+                a["id"]: links[trueachievements.normalize_name(a["name"])]
+                for a in achievements
+                if trueachievements.normalize_name(a["name"]) in links
+            }
+            if mapping:
+                await db.set_achievement_guide_urls(conn, mapping)
+        await db.mark_guide_links_fetched(conn, platform_game_id)
+
+
+async def _maybe_schedule_guide_refresh(conn, platform_game_id: int) -> None:
+    if await db.guide_links_need_refresh(conn, platform_game_id):
+        asyncio.create_task(_refresh_guide_links(platform_game_id))
+
+
 @app.get("/api/games/{platform_game_id}/achievements")
 async def game_achievements(platform_game_id: int, user: dict = Depends(require_user)):
     pool = await db.get_pool()
     async with pool.connection() as conn:
+        await _maybe_schedule_guide_refresh(conn, platform_game_id)
         rows = await _fetch(
             conn,
             """
@@ -1282,6 +1319,7 @@ async def game_achievements(platform_game_id: int, user: dict = Depends(require_
                 a.icon_url,
                 a.points,
                 a.rarity_pct,
+                a.guide_url,
                 ua.unlocked,
                 ua.unlocked_at
             FROM achievements a
