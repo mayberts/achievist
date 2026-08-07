@@ -46,7 +46,10 @@ function normalizeName(name: string): string {
 // recover.
 const SLUG_OVERRIDES: Record<string, Record<string, string>> = {
   steam: { borderlandsgotyenhanced: "Borderlands-Game-of-the-Year-Enhanced" },
-  xbox: { guitarheroiii: "Guitar-Hero-3-Legends-of-Rock" },
+  xbox: {
+    guitarheroiii: "Guitar-Hero-3-Legends-of-Rock",
+    guitarheroii: "Guitar-Hero-2",
+  },
 };
 
 export function gameDirectUrl(platform: string, gameName: string): string | null {
