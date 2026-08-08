@@ -250,6 +250,18 @@ export interface RecentUnlocksResponse {
   events: UnlockEvent[];
 }
 
+export interface FamilyUnlockEvent extends UnlockEvent {
+  username: string;
+  display_name: string | null;
+  avatar_url: string | null;
+  is_you: boolean;
+}
+
+export interface FamilyActivityResponse {
+  events: FamilyUnlockEvent[];
+  you_share: boolean;
+}
+
 export interface BackupInfo {
   filename: string;
   size_bytes: number;

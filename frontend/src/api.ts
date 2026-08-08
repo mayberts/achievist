@@ -5,6 +5,7 @@ import type {
   Activity,
   AuthStatus,
   BackupsResponse,
+  FamilyActivityResponse,
   GameComparison,
   GameDetail,
   GamesResponse,
@@ -175,6 +176,8 @@ export const api = {
   // Achievement-unlock notification feed
   recentUnlocks: (since: string) =>
     get<RecentUnlocksResponse>(`/api/unlocks/recent?since=${encodeURIComponent(since)}`),
+  familyActivity: (since: string) =>
+    get<FamilyActivityResponse>(`/api/activity/family?since=${encodeURIComponent(since)}`),
 
   searchAchievements: (q: AchievementSearchQuery) => {
     const params = new URLSearchParams();
