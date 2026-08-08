@@ -16,6 +16,7 @@ import { AccountsPage } from "./pages/AccountsPage";
 import { LeaderboardPage } from "./pages/LeaderboardPage";
 import { MaintenancePage } from "./pages/MaintenancePage";
 import { GameDetailPage } from "./pages/GameDetailPage";
+import { GameComparePage } from "./pages/GameComparePage";
 
 // Statistics pulls in recharts (~340 kB); load it only when the tab is opened.
 const StatisticsPage = lazy(() =>
@@ -193,6 +194,7 @@ export default function App() {
         <div className="mt-6">
           <Routes>
             <Route path="/games/:id" element={<GameDetailPage />} />
+            <Route path="/leaderboard/games/:id" element={<GameComparePage />} />
             <Route
               path="*"
               element={

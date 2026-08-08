@@ -591,18 +591,34 @@ async def update_profile(payload: dict, user: dict = Depends(require_user)):
 
 
 @app.get("/api/leaderboard")
-async def leaderboard(user: dict = Depends(require_user)):
+async def leaderboard(
+    platform: str | None = None,
+    window: str | None = None,
+    user: dict = Depends(require_user),
+):
+    """
+    `window`: "week" or "month" scopes achievist_points/achievements_unlocked
+    to unlocks in that trailing period; anything else (including omitted)
+    means all-time. games_played/games_completed are always all-time (see
+    db.get_leaderboard's docstring).
+    """
+    since = None
+    if window == "week":
+        since = datetime.now(timezone.utc) - timedelta(days=7)
+    elif window == "month":
+        since = datetime.now(timezone.utc) - timedelta(days=30)
+
     pool = await db.get_pool()
     async with pool.connection() as conn:
-        rows = await db.get_leaderboard(conn, user["id"])
+        rows = await db.get_leaderboard(conn, user["id"], platform=platform, since=since)
     return {"entries": rows, "you_share": user["share_stats"]}
 
 
 @app.get("/api/leaderboard/games")
-async def leaderboard_games(user: dict = Depends(require_user)):
+async def leaderboard_games(platform: str | None = None, user: dict = Depends(require_user)):
     pool = await db.get_pool()
     async with pool.connection() as conn:
-        rows = await db.get_shared_games(conn, user["id"])
+        rows = await db.get_shared_games(conn, user["id"], platform=platform)
     return {"games": rows, "you_share": user["share_stats"]}
 
 

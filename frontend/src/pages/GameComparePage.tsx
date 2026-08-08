@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { X, Check, Lock, Trophy, ExternalLink } from "lucide-react";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
+import { ArrowLeft, Check, Lock, Trophy, ExternalLink } from "lucide-react";
 import { api } from "../api";
 import type { GameComparison } from "../types";
 import { platformLabel } from "../lib/platforms";
@@ -7,44 +8,45 @@ import { RARITY_TIER_CLASS, rarityTier } from "../lib/rarity";
 import { gameDirectUrl, guideSearchUrl } from "../lib/guideLink";
 import { fmtDate } from "../lib/format";
 
-export function GameCompareModal({
-  platformGameId,
-  onClose,
-}: {
-  platformGameId: number;
-  onClose: () => void;
-}) {
+export function GameComparePage() {
+  const { id } = useParams<{ id: string }>();
+  const platformGameId = Number(id);
   const [data, setData] = useState<GameComparison | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const navigate = useNavigate();
+  const location = useLocation();
 
   useEffect(() => {
+    setData(null);
+    setError(null);
     api.compareGame(platformGameId)
       .then(setData)
       .catch((e) => setError(String(e instanceof Error ? e.message : e)));
   }, [platformGameId]);
 
+  function back() {
+    if (location.key !== "default") navigate(-1);
+    else navigate("/");
+  }
+
   return (
-    <div
-      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 p-4"
-      onClick={onClose}
-    >
-      <div
-        className="flex max-h-[85vh] w-full max-w-2xl flex-col overflow-hidden rounded-card border border-line bg-ink-850 shadow-2xl"
-        onClick={(e) => e.stopPropagation()}
+    <div>
+      <button
+        onClick={back}
+        className="mb-4 inline-flex items-center gap-1.5 text-sm text-muted transition hover:text-slate-200"
       >
-        <div className="flex items-center justify-between border-b border-line p-4">
-          <div className="min-w-0">
-            <h2 className="truncate text-base font-semibold text-slate-100">
-              {data ? data.game.name : "Loading…"}
-            </h2>
-            {data && <div className="text-xs text-faint">{platformLabel(data.game.platform)}</div>}
-          </div>
-          <button onClick={onClose} className="rounded-lg p-1.5 text-muted transition hover:bg-ink-800 hover:text-slate-200">
-            <X size={18} />
-          </button>
+        <ArrowLeft size={15} /> Back to Leaderboard
+      </button>
+
+      <div className="rounded-card border border-line bg-ink-850">
+        <div className="border-b border-line p-4">
+          <h2 className="truncate text-base font-semibold text-slate-100">
+            {data ? data.game.name : "Loading…"}
+          </h2>
+          {data && <div className="text-xs text-faint">{platformLabel(data.game.platform)}</div>}
         </div>
 
-        <div className="overflow-y-auto">
+        <div className="overflow-x-auto">
           {error && <div className="p-4 text-sm text-red-300">{error}</div>}
           {!data && !error && <div className="py-16 text-center text-muted">Loading…</div>}
 

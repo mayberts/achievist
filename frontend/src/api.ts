@@ -119,8 +119,19 @@ export const api = {
       return saved;
     }),
 
-  leaderboard: () => get<LeaderboardResponse>("/api/leaderboard"),
-  sharedGames: () => get<SharedGamesResponse>("/api/leaderboard/games"),
+  leaderboard: (params?: { platform?: string; window?: string }) => {
+    const q = new URLSearchParams();
+    if (params?.platform) q.set("platform", params.platform);
+    if (params?.window) q.set("window", params.window);
+    const qs = q.toString();
+    return get<LeaderboardResponse>(`/api/leaderboard${qs ? `?${qs}` : ""}`);
+  },
+  sharedGames: (params?: { platform?: string }) => {
+    const q = new URLSearchParams();
+    if (params?.platform) q.set("platform", params.platform);
+    const qs = q.toString();
+    return get<SharedGamesResponse>(`/api/leaderboard/games${qs ? `?${qs}` : ""}`);
+  },
   compareGame: (platformGameId: number) =>
     get<GameComparison>(`/api/leaderboard/games/${platformGameId}/compare`),
 

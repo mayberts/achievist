@@ -40,6 +40,7 @@ export interface SharedGamePlayer {
   earned: number;
   total: number;
   completion_pct: number;
+  last_played_at: string | null;
 }
 
 export interface SharedGame {
@@ -48,6 +49,7 @@ export interface SharedGame {
   name: string;
   icon_url: string | null;
   sgdb_cover_url: string | null;
+  last_activity: string | null;
   players: SharedGamePlayer[];
 }
 
