@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Crown, Medal, Trophy, Gamepad2, CheckCircle2, Swords, Activity } from "lucide-react";
 import { api } from "../api";
 import type {
@@ -6,9 +7,31 @@ import type {
 } from "../types";
 import { fmtNum, fmtRelative } from "../lib/format";
 import { platformLabel } from "../lib/platforms";
-import { GameCompareModal } from "../components/GameCompareModal";
 
 const FAMILY_ACTIVITY_POLL_MS = 45_000;
+
+type LeaderboardSort = "achievist_points" | "achievements_unlocked" | "games_completed" | "games_played";
+type LeaderboardWindow = "all" | "week" | "month";
+type SharedGamesSort = "gap" | "name" | "recent";
+
+const SORT_LABEL: Record<LeaderboardSort, string> = {
+  achievist_points: "Achievist Points",
+  achievements_unlocked: "Achievements unlocked",
+  games_completed: "Games completed",
+  games_played: "Games played",
+};
+
+const WINDOW_LABEL: Record<LeaderboardWindow, string> = {
+  all: "All time",
+  week: "This week",
+  month: "This month",
+};
+
+const SHARED_SORT_LABEL: Record<SharedGamesSort, string> = {
+  gap: "Closest race",
+  name: "Alphabetical",
+  recent: "Recently played",
+};
 
 function ActivityRow({ event }: { event: FamilyUnlockEvent }) {
   return (
@@ -54,7 +77,13 @@ function RankBadge({ rank }: { rank: number }) {
   );
 }
 
-function Row({ entry, rank }: { entry: LeaderboardEntry; rank: number }) {
+function Row({ entry, rank, highlight }: { entry: LeaderboardEntry; rank: number; highlight: LeaderboardSort }) {
+  const headline: Record<LeaderboardSort, string> = {
+    achievist_points: fmtNum(entry.achievist_points),
+    achievements_unlocked: fmtNum(entry.achievements_unlocked),
+    games_completed: fmtNum(entry.games_completed),
+    games_played: fmtNum(entry.games_played),
+  };
   return (
     <div className="flex items-center gap-3 rounded-card border border-line bg-ink-850 p-3.5 sm:p-4">
       <RankBadge rank={rank} />
@@ -82,8 +111,10 @@ function Row({ entry, rank }: { entry: LeaderboardEntry; rank: number }) {
         </div>
       </div>
       <div className="flex-shrink-0 text-right">
-        <div className="text-xl font-bold tabular-nums text-slate-100">{fmtNum(entry.achievist_points)}</div>
-        <div className="text-[10px] uppercase tracking-wide text-faint">Achievist Pts</div>
+        <div className="text-xl font-bold tabular-nums text-slate-100">{headline[highlight]}</div>
+        <div className="text-[10px] uppercase tracking-wide text-faint">
+          {highlight === "achievist_points" ? "Achievist Pts" : SORT_LABEL[highlight]}
+        </div>
       </div>
     </div>
   );
@@ -139,14 +170,27 @@ function SharedGameRow({ game, onCompare }: { game: SharedGame; onCompare: () =>
 }
 
 export function LeaderboardPage() {
+  const navigate = useNavigate();
   const [data, setData] = useState<LeaderboardResponse | null>(null);
   const [gamesData, setGamesData] = useState<SharedGamesResponse | null>(null);
-  const [comparing, setComparing] = useState<number | null>(null);
   const [activityEvents, setActivityEvents] = useState<FamilyUnlockEvent[]>([]);
   const [activityLoaded, setActivityLoaded] = useState(false);
 
+  const [lbPlatform, setLbPlatform] = useState("");
+  const [lbWindow, setLbWindow] = useState<LeaderboardWindow>("all");
+  const [lbSort, setLbSort] = useState<LeaderboardSort>("achievist_points");
+
+  const [sgPlatform, setSgPlatform] = useState("");
+  const [sgSort, setSgSort] = useState<SharedGamesSort>("gap");
+
   useEffect(() => {
-    api.leaderboard().then(setData).catch(() => setData(null));
+    setData(null);
+    api.leaderboard({ platform: lbPlatform || undefined, window: lbWindow === "all" ? undefined : lbWindow })
+      .then(setData)
+      .catch(() => setData(null));
+  }, [lbPlatform, lbWindow]);
+
+  useEffect(() => {
     api.sharedGames().then(setGamesData).catch(() => setGamesData(null));
   }, []);
 
@@ -174,11 +218,38 @@ export function LeaderboardPage() {
     };
   }, []);
 
-  if (!data) {
-    return <div className="py-16 text-center text-muted">Loading…</div>;
-  }
+  const availablePlatforms = useMemo(
+    () => Array.from(new Set((gamesData?.games ?? []).map((g) => g.platform))).sort(),
+    [gamesData],
+  );
 
-  const { entries, you_share } = data;
+  const sortedEntries = useMemo(() => {
+    if (!data) return [];
+    return [...data.entries].sort((a, b) => b[lbSort] - a[lbSort]);
+  }, [data, lbSort]);
+
+  const filteredSharedGames = useMemo(() => {
+    if (!gamesData) return [];
+    let games = gamesData.games;
+    if (sgPlatform) games = games.filter((g) => g.platform === sgPlatform);
+    const withGap = (g: SharedGame) => {
+      const sorted = [...g.players].sort((a, b) => b.completion_pct - a.completion_pct);
+      return sorted.length >= 2 ? sorted[0].completion_pct - sorted[1].completion_pct : 0;
+    };
+    const sorted = [...games];
+    if (sgSort === "gap") sorted.sort((a, b) => withGap(a) - withGap(b));
+    else if (sgSort === "name") sorted.sort((a, b) => a.name.localeCompare(b.name));
+    else if (sgSort === "recent") {
+      sorted.sort((a, b) => {
+        const at = a.last_activity ? new Date(a.last_activity).getTime() : 0;
+        const bt = b.last_activity ? new Date(b.last_activity).getTime() : 0;
+        return bt - at;
+      });
+    }
+    return sorted;
+  }, [gamesData, sgPlatform, sgSort]);
+
+  const selectClass = "rounded-lg border border-line bg-ink-800 px-2 py-1 text-xs text-slate-200";
 
   return (
     <div>
@@ -201,35 +272,75 @@ export function LeaderboardPage() {
         </div>
       )}
 
-      <div className="mb-2 text-lg font-semibold text-slate-100">Leaderboard</div>
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+        <div className="text-lg font-semibold text-slate-100">Leaderboard</div>
+        <div className="flex flex-wrap items-center gap-2">
+          <select value={lbSort} onChange={(e) => setLbSort(e.target.value as LeaderboardSort)} className={selectClass}>
+            {(Object.keys(SORT_LABEL) as LeaderboardSort[]).map((k) => (
+              <option key={k} value={k}>Sort: {SORT_LABEL[k]}</option>
+            ))}
+          </select>
+          <select value={lbWindow} onChange={(e) => setLbWindow(e.target.value as LeaderboardWindow)} className={selectClass}>
+            {(Object.keys(WINDOW_LABEL) as LeaderboardWindow[]).map((k) => (
+              <option key={k} value={k}>{WINDOW_LABEL[k]}</option>
+            ))}
+          </select>
+          <select value={lbPlatform} onChange={(e) => setLbPlatform(e.target.value)} className={selectClass}>
+            <option value="">All platforms</option>
+            {availablePlatforms.map((p) => (
+              <option key={p} value={p}>{platformLabel(p)}</option>
+            ))}
+          </select>
+        </div>
+      </div>
       <p className="mb-5 text-sm text-muted">
         Achievist Points weight each unlock by how rare it is (Legendary unlocks are worth far more
         than common ones), so it stays fair across platforms and games. Only family members who've
         opted in to sharing are shown here — you always see your own row.
+        {lbWindow !== "all" && " Games played/completed always reflect all-time, even with a time window selected."}
       </p>
 
-      {!you_share && (
+      {!data ? (
+        <div className="py-8 text-center text-muted">Loading…</div>
+      ) : !data.you_share ? (
         <div className="mb-5 rounded-card border border-accent/30 bg-accent/10 px-4 py-3 text-sm text-slate-200">
           You're not sharing your stats yet — turn on <strong>Compare achievements with family</strong>{" "}
           from your profile (click your avatar above) so you show up for everyone else too.
         </div>
+      ) : null}
+
+      {data && (
+        sortedEntries.length === 0 ? (
+          <div className="rounded-card border border-line bg-ink-850 p-6 text-center text-sm text-muted">
+            No data yet — connect and sync a platform to get on the board.
+          </div>
+        ) : (
+          <div className="space-y-2.5">
+            {sortedEntries.map((e, i) => (
+              <Row key={e.user_id} entry={e} rank={i} highlight={lbSort} />
+            ))}
+          </div>
+        )
       )}
 
-      {entries.length === 0 ? (
-        <div className="rounded-card border border-line bg-ink-850 p-6 text-center text-sm text-muted">
-          No data yet — connect and sync a platform to get on the board.
+      <div className="mb-2 mt-8 flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-2 text-lg font-semibold text-slate-100">
+          <Swords size={18} className="text-accent" />
+          Games in Common
         </div>
-      ) : (
-        <div className="space-y-2.5">
-          {entries.map((e, i) => (
-            <Row key={e.user_id} entry={e} rank={i} />
-          ))}
+        <div className="flex flex-wrap items-center gap-2">
+          <select value={sgSort} onChange={(e) => setSgSort(e.target.value as SharedGamesSort)} className={selectClass}>
+            {(Object.keys(SHARED_SORT_LABEL) as SharedGamesSort[]).map((k) => (
+              <option key={k} value={k}>Sort: {SHARED_SORT_LABEL[k]}</option>
+            ))}
+          </select>
+          <select value={sgPlatform} onChange={(e) => setSgPlatform(e.target.value)} className={selectClass}>
+            <option value="">All platforms</option>
+            {availablePlatforms.map((p) => (
+              <option key={p} value={p}>{platformLabel(p)}</option>
+            ))}
+          </select>
         </div>
-      )}
-
-      <div className="mb-2 mt-8 flex items-center gap-2 text-lg font-semibold text-slate-100">
-        <Swords size={18} className="text-accent" />
-        Games in Common
       </div>
       <p className="mb-5 text-sm text-muted">
         Games two or more of you own, with who's furthest ahead on each.
@@ -237,20 +348,20 @@ export function LeaderboardPage() {
 
       {!gamesData ? (
         <div className="py-8 text-center text-muted">Loading…</div>
-      ) : gamesData.games.length === 0 ? (
+      ) : filteredSharedGames.length === 0 ? (
         <div className="rounded-card border border-line bg-ink-850 p-6 text-center text-sm text-muted">
           No shared games yet — once two of you own the same game, it'll show up here.
         </div>
       ) : (
         <div className="grid gap-2.5 sm:grid-cols-2">
-          {gamesData.games.map((g) => (
-            <SharedGameRow key={g.platform_game_id} game={g} onCompare={() => setComparing(g.platform_game_id)} />
+          {filteredSharedGames.map((g) => (
+            <SharedGameRow
+              key={g.platform_game_id}
+              game={g}
+              onCompare={() => navigate(`/leaderboard/games/${g.platform_game_id}`)}
+            />
           ))}
         </div>
-      )}
-
-      {comparing != null && (
-        <GameCompareModal platformGameId={comparing} onClose={() => setComparing(null)} />
       )}
     </div>
   );

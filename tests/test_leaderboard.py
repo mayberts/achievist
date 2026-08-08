@@ -155,3 +155,92 @@ async def test_share_stats_toggle_via_profile_endpoint(db_conn, client):
 
     prof = await client.get("/api/profile")
     assert prof.json()["share_stats"] is True
+
+
+async def test_leaderboard_platform_filter_scopes_all_stats(db_conn, client):
+    parent = await db.create_user(db_conn, "parent", auth.hash_password("parentpassword1"), is_admin=True)
+    account = await db.upsert_account(db_conn, parent["id"], "steam", "111", {})
+    steam_game = await db.upsert_platform_game(db_conn, "steam", "1", "Steam Game", None, 2)
+    for i in range(2):
+        a = await db.upsert_achievement(db_conn, steam_game, f"s{i}", f"Steam Ach {i}", "", None, 10, None)
+        await db.upsert_user_achievement(db_conn, account, a, True, None)
+    await db.upsert_user_game(db_conn, account, steam_game, 0, 2, 2)
+
+    xbox_account = await db.upsert_account(db_conn, parent["id"], "xbox", "222", {})
+    xbox_game = await db.upsert_platform_game(db_conn, "xbox", "1", "Xbox Game", None, 1)
+    a = await db.upsert_achievement(db_conn, xbox_game, "x0", "Xbox Ach", "", None, 10, None)
+    await db.upsert_user_achievement(db_conn, xbox_account, a, True, None)
+    await db.upsert_user_game(db_conn, xbox_account, xbox_game, 0, 1, 1)
+    await db_conn.commit()
+
+    await client.post("/api/auth/login", json={"username": "parent", "password": "parentpassword1"})
+
+    resp = await client.get("/api/leaderboard", params={"platform": "steam"})
+    entry = resp.json()["entries"][0]
+    assert entry["achievements_unlocked"] == 2
+    assert entry["games_played"] == 1
+
+    resp_all = await client.get("/api/leaderboard")
+    assert resp_all.json()["entries"][0]["achievements_unlocked"] == 3
+
+
+async def test_leaderboard_window_filter_scopes_unlocked_count_only(db_conn, client):
+    from datetime import date
+
+    parent = await db.create_user(db_conn, "parent", auth.hash_password("parentpassword1"), is_admin=True)
+    account = await db.upsert_account(db_conn, parent["id"], "steam", "111", {})
+    game = await db.upsert_platform_game(db_conn, "steam", "1", "Some Game", None, 2)
+    old = await db.upsert_achievement(db_conn, game, "a1", "Old", "", None, 10, None)
+    recent = await db.upsert_achievement(db_conn, game, "a2", "Recent", "", None, 10, None)
+    await db.upsert_user_achievement(db_conn, account, old, True, date(2020, 1, 1))
+    await db.upsert_user_achievement(db_conn, account, recent, True, date.today())
+    await db.upsert_user_game(db_conn, account, game, 0, 2, 2)
+    await db_conn.commit()
+
+    await client.post("/api/auth/login", json={"username": "parent", "password": "parentpassword1"})
+
+    resp = await client.get("/api/leaderboard", params={"window": "week"})
+    entry = resp.json()["entries"][0]
+    assert entry["achievements_unlocked"] == 1
+    # games_played/completed stay all-time regardless of the window filter
+    assert entry["games_played"] == 1
+
+
+async def test_shared_games_platform_filter(db_conn, client):
+    parent = await db.create_user(db_conn, "parent", auth.hash_password("parentpassword1"), is_admin=True)
+    kid = await db.create_user(db_conn, "kid", auth.hash_password("kidpassword1"), is_admin=False)
+    await db.update_user_profile(db_conn, kid["id"], None, None, True)
+    await _seed_achievements(db_conn, parent["id"], "steam", "111", 2)
+    await _seed_achievements(db_conn, kid["id"], "steam", "222", 5)
+    await db_conn.commit()
+
+    await client.post("/api/auth/login", json={"username": "parent", "password": "parentpassword1"})
+
+    resp = await client.get("/api/leaderboard/games", params={"platform": "steam"})
+    assert len(resp.json()["games"]) == 1
+
+    resp_xbox = await client.get("/api/leaderboard/games", params={"platform": "xbox"})
+    assert resp_xbox.json()["games"] == []
+
+
+async def test_shared_games_include_last_activity_and_last_played_at(db_conn, client):
+    from datetime import datetime, timezone
+
+    parent = await db.create_user(db_conn, "parent", auth.hash_password("parentpassword1"), is_admin=True)
+    kid = await db.create_user(db_conn, "kid", auth.hash_password("kidpassword1"), is_admin=False)
+    await db.update_user_profile(db_conn, kid["id"], None, None, True)
+    parent_account = await db.upsert_account(db_conn, parent["id"], "steam", "111", {})
+    kid_account = await db.upsert_account(db_conn, kid["id"], "steam", "222", {})
+    game = await db.upsert_platform_game(db_conn, "steam", "1", "Some Game", None, 1)
+    when = datetime(2025, 6, 1, tzinfo=timezone.utc)
+    await db.upsert_user_game(db_conn, parent_account, game, 0, 1, 1, last_played_at=when)
+    await db.upsert_user_game(db_conn, kid_account, game, 0, 0, 1)
+    await db_conn.commit()
+
+    await client.post("/api/auth/login", json={"username": "parent", "password": "parentpassword1"})
+    resp = await client.get("/api/leaderboard/games")
+    g = resp.json()["games"][0]
+    assert g["last_activity"] is not None
+    players = {p["username"]: p for p in g["players"]}
+    assert players["parent"]["last_played_at"] is not None
+    assert players["kid"]["last_played_at"] is None

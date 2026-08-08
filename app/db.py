@@ -136,11 +136,19 @@ async def delete_user(conn, user_id: int) -> None:
 # so the leaderboard isn't just whoever plays the platform with the
 # biggest native point scale (Gamerscore vs. RA points vs. none at all for
 # Steam). Tier boundaries mirror frontend/src/lib/rarity.ts exactly.
-async def get_leaderboard(conn, requesting_user_id: int) -> list[dict]:
+async def get_leaderboard(
+    conn, requesting_user_id: int, platform: str | None = None, since=None,
+) -> list[dict]:
     """
     Achievist Points + raw stats per user who has opted in via
     users.share_stats — plus the requesting user themself even if they
     haven't opted in, so they can always see their own row.
+
+    `platform` scopes every stat (points, unlocked, games played/completed)
+    to that one platform. `since` scopes achievements_unlocked/
+    achievist_points to unlocks on or after that timestamp (a "this week /
+    this month" view) — games_played/games_completed stay all-time even
+    then, since user_games has no per-unlock timestamp to window by.
     """
     return await _fetch(
         conn,
@@ -162,7 +170,10 @@ async def get_leaderboard(conn, requesting_user_id: int) -> list[dict]:
             FROM user_achievements ua
             JOIN linked_accounts la ON la.id = ua.linked_account_id
             JOIN achievements a ON a.id = ua.achievement_id
+            JOIN platform_games pg ON pg.id = a.platform_game_id
             WHERE ua.unlocked = true
+              AND (%s::text IS NULL OR pg.platform = %s)
+              AND (%s::timestamptz IS NULL OR ua.unlocked_at >= %s)
             GROUP BY la.user_id
         ),
         game_stats AS (
@@ -174,6 +185,8 @@ async def get_leaderboard(conn, requesting_user_id: int) -> list[dict]:
                 ) AS games_completed
             FROM user_games ug
             JOIN linked_accounts la ON la.id = ug.linked_account_id
+            JOIN platform_games pg ON pg.id = ug.platform_game_id
+            WHERE %s::text IS NULL OR pg.platform = %s
             GROUP BY la.user_id
         )
         SELECT
@@ -191,11 +204,11 @@ async def get_leaderboard(conn, requesting_user_id: int) -> list[dict]:
         WHERE u.share_stats = true OR u.id = %s
         ORDER BY achievist_points DESC
         """,
-        requesting_user_id,
+        platform, platform, since, since, platform, platform, requesting_user_id,
     )
 
 
-async def get_shared_games(conn, requesting_user_id: int) -> list[dict]:
+async def get_shared_games(conn, requesting_user_id: int, platform: str | None = None) -> list[dict]:
     """
     Games owned by two or more "visible" users (opted-in via share_stats,
     plus the requester themself), each with every visible owner's progress
@@ -204,6 +217,10 @@ async def get_shared_games(conn, requesting_user_id: int) -> list[dict]:
     igdb_id isn't populated for every game and an exact platform-game match
     is unambiguous; cross-platform copies of the same game (e.g. Steam vs.
     Xbox) show as separate rows.
+
+    Each player also carries last_played_at, and the game row a
+    last_activity (the max across owners), so the frontend can offer a
+    "most recently played" sort alongside completion-gap/alphabetical.
     """
     return await _fetch(
         conn,
@@ -220,7 +237,8 @@ async def get_shared_games(conn, requesting_user_id: int) -> list[dict]:
                 u.avatar_url,
                 ug.earned_achievements,
                 ug.total_achievements,
-                ug.completion_pct
+                ug.completion_pct,
+                ug.last_played_at
             FROM user_games ug
             JOIN linked_accounts la ON la.id = ug.linked_account_id
             JOIN visible v ON v.id = la.user_id
@@ -232,6 +250,7 @@ async def get_shared_games(conn, requesting_user_id: int) -> list[dict]:
             pg.name,
             pg.icon_url,
             pg.sgdb_cover_url,
+            MAX(pug.last_played_at) AS last_activity,
             json_agg(
                 json_build_object(
                     'user_id', pug.user_id,
@@ -240,16 +259,18 @@ async def get_shared_games(conn, requesting_user_id: int) -> list[dict]:
                     'avatar_url', pug.avatar_url,
                     'earned', pug.earned_achievements,
                     'total', pug.total_achievements,
-                    'completion_pct', pug.completion_pct
+                    'completion_pct', pug.completion_pct,
+                    'last_played_at', pug.last_played_at
                 ) ORDER BY pug.completion_pct DESC NULLS LAST
             ) AS players
         FROM per_user_game pug
         JOIN platform_games pg ON pg.id = pug.platform_game_id
+        WHERE %s::text IS NULL OR pg.platform = %s
         GROUP BY pg.id, pg.platform, pg.name, pg.icon_url, pg.sgdb_cover_url
         HAVING COUNT(DISTINCT pug.user_id) >= 2
         ORDER BY pg.name
         """,
-        requesting_user_id,
+        requesting_user_id, platform, platform,
     )
 
 
