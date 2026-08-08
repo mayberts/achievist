@@ -88,3 +88,56 @@ async def test_recent_unlocks_excludes_other_users_events(client, db_conn):
     _record_unlock_events([_row("not-mine", datetime(2026, 1, 1, tzinfo=timezone.utc))], user_id=other["id"])
     resp = await client.get("/api/unlocks/recent")
     assert resp.json() == {"events": []}
+
+
+async def test_family_activity_excludes_events_from_users_who_have_not_opted_in(client, db_conn):
+    other = await db.create_user(db_conn, "kid", auth.hash_password("kidpassword1"))
+    await db_conn.commit()
+    _record_unlock_events([_row("kids-secret", datetime(2026, 1, 1, tzinfo=timezone.utc))], user_id=other["id"])
+
+    resp = await client.get("/api/activity/family")
+    assert resp.status_code == 200
+    assert resp.json()["events"] == []
+
+
+async def test_family_activity_includes_opted_in_members_with_identity(client, db_conn):
+    other = await db.create_user(db_conn, "kid", auth.hash_password("kidpassword1"))
+    await db.update_user_profile(db_conn, other["id"], "Kiddo", None, True)
+    await db_conn.commit()
+    _record_unlock_events([_row("kids-win", datetime(2026, 1, 1, tzinfo=timezone.utc))], user_id=other["id"])
+
+    resp = await client.get("/api/activity/family")
+    assert resp.status_code == 200
+    events = resp.json()["events"]
+    assert len(events) == 1
+    assert events[0]["achievement_name"] == "kids-win"
+    assert events[0]["username"] == "kid"
+    assert events[0]["display_name"] == "Kiddo"
+    assert events[0]["is_you"] is False
+
+
+async def test_family_activity_always_includes_your_own_events_even_when_opted_out(client, db_conn):
+    me = await db.get_user_by_username(db_conn, "parent")
+    _record_unlock_events([_row("my-win", datetime(2026, 1, 1, tzinfo=timezone.utc))], user_id=me["id"])
+
+    resp = await client.get("/api/activity/family")
+    assert resp.status_code == 200
+    events = resp.json()["events"]
+    assert len(events) == 1
+    assert events[0]["is_you"] is True
+    assert resp.json()["you_share"] is False
+
+
+async def test_family_activity_filters_by_since_across_all_visible_users(client, db_conn):
+    other = await db.create_user(db_conn, "kid", auth.hash_password("kidpassword1"))
+    await db.update_user_profile(db_conn, other["id"], None, None, True)
+    await db_conn.commit()
+    _record_unlock_events([
+        _row("old", datetime(2026, 1, 1, tzinfo=timezone.utc)),
+        _row("new", datetime(2026, 1, 3, tzinfo=timezone.utc)),
+    ], user_id=other["id"])
+    cutoff = datetime(2026, 1, 2, tzinfo=timezone.utc).isoformat()
+
+    resp = await client.get("/api/activity/family", params={"since": cutoff})
+    names = [e["achievement_name"] for e in resp.json()["events"]]
+    assert names == ["new"]

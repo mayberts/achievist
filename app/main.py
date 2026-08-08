@@ -1828,6 +1828,38 @@ async def recent_unlocks(since: str = "", user: dict = Depends(require_user)):
     return {"events": events[-15:]}
 
 
+@app.get("/api/activity/family")
+async def family_activity(since: str = "", user: dict = Depends(require_user)):
+    """
+    Like /api/unlocks/recent, but across every family member who has opted
+    in via share_stats (plus the requester themself, always) — same
+    privacy gate as the leaderboard endpoints. Each event is annotated
+    with who unlocked it so the frontend can render "Kiddo just unlocked…"
+    alongside your own unlocks.
+    """
+    pool = await db.get_pool()
+    async with pool.connection() as conn:
+        visible = await db.list_visible_users(conn, user["id"])
+    visible_map = {u["id"]: u for u in visible}
+
+    events = [e for e in _unlock_events if e["user_id"] in visible_map]
+    if since:
+        events = [e for e in events if e["unlocked_at"] > since]
+    events = events[-30:]
+
+    enriched = []
+    for e in events:
+        u = visible_map[e["user_id"]]
+        enriched.append({
+            **e,
+            "username": u["username"],
+            "display_name": u["display_name"],
+            "avatar_url": u["avatar_url"],
+            "is_you": e["user_id"] == user["id"],
+        })
+    return {"events": enriched, "you_share": user["share_stats"]}
+
+
 @app.post("/api/sync", status_code=202)
 async def trigger_sync(user: dict = Depends(require_user)):
     if _sync_lock.locked():

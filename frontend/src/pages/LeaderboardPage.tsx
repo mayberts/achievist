@@ -1,10 +1,35 @@
 import { useEffect, useState } from "react";
-import { Crown, Medal, Trophy, Gamepad2, CheckCircle2, Swords } from "lucide-react";
+import { Crown, Medal, Trophy, Gamepad2, CheckCircle2, Swords, Activity } from "lucide-react";
 import { api } from "../api";
-import type { LeaderboardEntry, LeaderboardResponse, SharedGame, SharedGamesResponse } from "../types";
-import { fmtNum } from "../lib/format";
+import type {
+  FamilyActivityResponse, FamilyUnlockEvent, LeaderboardEntry, LeaderboardResponse, SharedGame, SharedGamesResponse,
+} from "../types";
+import { fmtNum, fmtRelative } from "../lib/format";
 import { platformLabel } from "../lib/platforms";
 import { GameCompareModal } from "../components/GameCompareModal";
+
+const FAMILY_ACTIVITY_POLL_MS = 45_000;
+
+function ActivityRow({ event }: { event: FamilyUnlockEvent }) {
+  return (
+    <div className="flex items-center gap-3 rounded-lg bg-ink-800 px-3 py-2">
+      {event.icon_url ? (
+        <img src={event.icon_url} alt="" className="h-8 w-8 shrink-0 rounded" />
+      ) : (
+        <div className="h-8 w-8 shrink-0 rounded bg-ink-700" />
+      )}
+      <div className="min-w-0 flex-1">
+        <div className="truncate text-sm font-medium text-slate-100">
+          {event.achievement_name || "Achievement unlocked"}
+        </div>
+        <div className="truncate text-xs text-muted">
+          {event.is_you ? "You" : event.display_name || event.username} · {event.game_name}
+        </div>
+      </div>
+      <div className="shrink-0 text-xs text-faint">{fmtRelative(event.unlocked_at)}</div>
+    </div>
+  );
+}
 
 const RANK_STYLE = [
   "border-amber-400/40 bg-amber-400/10 text-amber-300",
@@ -117,10 +142,34 @@ export function LeaderboardPage() {
   const [data, setData] = useState<LeaderboardResponse | null>(null);
   const [gamesData, setGamesData] = useState<SharedGamesResponse | null>(null);
   const [comparing, setComparing] = useState<number | null>(null);
+  const [activityEvents, setActivityEvents] = useState<FamilyUnlockEvent[]>([]);
 
   useEffect(() => {
     api.leaderboard().then(setData).catch(() => setData(null));
     api.sharedGames().then(setGamesData).catch(() => setGamesData(null));
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    let cursor = "";
+    const poll = async () => {
+      try {
+        const res: FamilyActivityResponse = await api.familyActivity(cursor);
+        if (cancelled) return;
+        if (res.events.length > 0) {
+          cursor = res.events[res.events.length - 1].unlocked_at;
+          setActivityEvents((prev) => [...res.events].reverse().concat(prev).slice(0, 50));
+        }
+      } catch {
+        /* ignore */
+      }
+    };
+    poll();
+    const id = window.setInterval(poll, FAMILY_ACTIVITY_POLL_MS);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
   }, []);
 
   if (!data) {
@@ -131,6 +180,19 @@ export function LeaderboardPage() {
 
   return (
     <div>
+      {activityEvents.length > 0 && (
+        <div className="mb-8 rounded-card border border-line bg-ink-850 p-4">
+          <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-200">
+            <Activity size={15} className="text-faint" /> Family Activity
+          </div>
+          <div className="max-h-80 space-y-2 overflow-y-auto">
+            {activityEvents.map((e, i) => (
+              <ActivityRow key={`${e.unlocked_at}-${e.username}-${i}`} event={e} />
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="mb-2 text-lg font-semibold text-slate-100">Leaderboard</div>
       <p className="mb-5 text-sm text-muted">
         Achievist Points weight each unlock by how rare it is (Legendary unlocks are worth far more

@@ -55,11 +55,12 @@ export default function App() {
         return;
       }
       const since = localStorage.getItem(UNLOCK_CURSOR_KEY) ?? "";
-      const { events } = await api.recentUnlocks(since);
+      const { events } = await api.familyActivity(since);
       for (const e of events) {
+        const who = e.is_you ? null : e.display_name || e.username;
         toast.achievement({
           name: e.achievement_name || "Achievement unlocked",
-          subtitle: e.game_name + (e.points ? ` · ${e.points} pts` : ""),
+          subtitle: (who ? `${who} · ` : "") + e.game_name + (e.points ? ` · ${e.points} pts` : ""),
           icon: e.icon_url,
         });
       }

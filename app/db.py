@@ -105,6 +105,15 @@ async def list_users(conn) -> list[dict]:
     )
 
 
+async def list_visible_users(conn, requesting_user_id: int) -> list[dict]:
+    """Users whose activity requesting_user_id may see: opted-in via share_stats, plus always themself."""
+    return await _fetch(
+        conn,
+        "SELECT id, username, display_name, avatar_url FROM users WHERE share_stats = true OR id = %s",
+        requesting_user_id,
+    )
+
+
 async def update_user_profile(
     conn, user_id: int, display_name: str | None, avatar_url: str | None, share_stats: bool,
     background_url: str | None = None,
