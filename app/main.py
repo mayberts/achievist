@@ -4,7 +4,7 @@ import logging
 import httpx
 from contextlib import asynccontextmanager
 
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from fastapi import Cookie, Depends, FastAPI, HTTPException, Query, Response
@@ -967,7 +967,9 @@ async def statistics(user: dict = Depends(require_user)):
                     COUNT(*) FILTER (WHERE ug.completion_pct >= 80 AND ug.completion_pct < 100) AS finished,
                     ROUND(AVG(ug.completion_pct), 1)                                    AS avg_completion,
                     ROUND(SUM(ug.earned_achievements)::numeric
-                          / NULLIF(SUM(ug.total_achievements), 0) * 100, 2)             AS absolute_completion
+                          / NULLIF(SUM(ug.total_achievements), 0) * 100, 2)             AS absolute_completion,
+                    COUNT(*) FILTER (WHERE ug.earned_achievements > 0)                  AS active_games,
+                    COUNT(*) FILTER (WHERE ug.earned_achievements = 0)                  AS untouched_games
                 FROM user_games ug
                 JOIN linked_accounts la ON la.id = ug.linked_account_id AND la.user_id = %s
                 WHERE ug.total_achievements > 0
@@ -1074,6 +1076,39 @@ async def statistics(user: dict = Depends(require_user)):
                 user["id"],
             )
 
+            points_progression = await _fetch(
+                conn,
+                """
+                SELECT DATE_TRUNC('month', ua.unlocked_at)::date AS month,
+                       COALESCE(SUM(a.points), 0) AS pts
+                FROM user_achievements ua
+                JOIN achievements a ON a.id = ua.achievement_id
+                JOIN linked_accounts la ON la.id = ua.linked_account_id AND la.user_id = %s
+                WHERE ua.unlocked = true AND ua.unlocked_at IS NOT NULL
+                GROUP BY DATE_TRUNC('month', ua.unlocked_at)::date
+                ORDER BY DATE_TRUNC('month', ua.unlocked_at)::date
+                """,
+                user["id"],
+            )
+
+            on_this_day_rows = await _fetch(
+                conn,
+                """
+                SELECT ua.unlocked_at AS unlocked_at, a.name AS ach_name, a.icon_url AS ach_icon,
+                       pg.name AS game_name, pg.platform AS platform
+                FROM user_achievements ua
+                JOIN achievements a ON a.id = ua.achievement_id
+                JOIN platform_games pg ON pg.id = a.platform_game_id
+                JOIN linked_accounts la ON la.id = ua.linked_account_id AND la.user_id = %s
+                WHERE ua.unlocked = true AND ua.unlocked_at IS NOT NULL
+                  AND EXTRACT(MONTH FROM ua.unlocked_at) = EXTRACT(MONTH FROM CURRENT_DATE)
+                  AND EXTRACT(DAY FROM ua.unlocked_at) = EXTRACT(DAY FROM CURRENT_DATE)
+                  AND ua.unlocked_at::date <> CURRENT_DATE
+                ORDER BY ua.unlocked_at DESC
+                """,
+                user["id"],
+            )
+
             best_day_row = await _fetchrow(
                 conn,
                 """
@@ -1126,7 +1161,27 @@ async def statistics(user: dict = Depends(require_user)):
         cum, total = [], 0
         for r in progression:
             total += r["cnt"]
-            cum.append({"month": r["month"].isoformat(), "total": total})
+            cum.append({"month": r["month"].isoformat(), "cnt": r["cnt"], "total": total})
+
+        pts_cum, pts_total = [], 0
+        for r in points_progression:
+            pts_total += int(r["pts"] or 0)
+            pts_cum.append({"month": r["month"].isoformat(), "cnt": int(r["pts"] or 0), "total": pts_total})
+
+        years = sorted({int(r["month"].year) for r in progression}, reverse=True)
+
+        today = date.today()
+        on_this_day = [
+            {
+                "years_ago": today.year - r["unlocked_at"].year,
+                "unlocked_at": r["unlocked_at"].isoformat(),
+                "achievement_name": r["ach_name"],
+                "icon_url": r["ach_icon"],
+                "game_name": r["game_name"],
+                "platform": r["platform"],
+            }
+            for r in on_this_day_rows
+        ]
 
         bracket_order = ["0%", "1-25%", "25-50%", "50-75%", "75-99%", "100%"]
         dist_map = {r["bracket"]: r["cnt"] for r in completion_dist}
@@ -1140,6 +1195,8 @@ async def statistics(user: dict = Depends(require_user)):
                 "finished":           int(general["finished"] or 0),
                 "avg_completion":     float(general["avg_completion"] or 0),
                 "absolute_completion": float(general["absolute_completion"] or 0),
+                "active_games":       int(general["active_games"] or 0),
+                "untouched_games":    int(general["untouched_games"] or 0),
                 "daily_max":          int(daily_max["cnt"]) if daily_max else 0,
                 "monthly_max":        int(monthly_max["cnt"]) if monthly_max else 0,
                 "best_day":           best_day_row["day"].isoformat() if best_day_row else None,
@@ -1153,6 +1210,9 @@ async def statistics(user: dict = Depends(require_user)):
             "completion_dist": [{"bracket": b, "cnt": dist_map.get(b, 0)} for b in bracket_order],
             "platforms": [{"platform": r["platform"], "earned": int(r["earned"] or 0)} for r in platform_rows],
             "progression": cum,
+            "points_progression": pts_cum,
+            "progression_years": years,
+            "on_this_day": on_this_day,
         }
     except Exception:
         log.exception("statistics endpoint failed")
