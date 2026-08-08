@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Crown, Medal, Trophy, Gamepad2, CheckCircle2, Swords, Activity } from "lucide-react";
+import { Crown, Medal, Trophy, Gamepad2, CheckCircle2, Swords, Activity, Search } from "lucide-react";
 import { api } from "../api";
 import type {
   FamilyActivityResponse, FamilyUnlockEvent, LeaderboardEntry, LeaderboardResponse, SharedGame, SharedGamesResponse,
@@ -182,6 +182,7 @@ export function LeaderboardPage() {
 
   const [sgPlatform, setSgPlatform] = useState("");
   const [sgSort, setSgSort] = useState<SharedGamesSort>("gap");
+  const [sgSearch, setSgSearch] = useState("");
 
   useEffect(() => {
     setData(null);
@@ -232,6 +233,10 @@ export function LeaderboardPage() {
     if (!gamesData) return [];
     let games = gamesData.games;
     if (sgPlatform) games = games.filter((g) => g.platform === sgPlatform);
+    if (sgSearch.trim()) {
+      const q = sgSearch.trim().toLowerCase();
+      games = games.filter((g) => g.name.toLowerCase().includes(q));
+    }
     const withGap = (g: SharedGame) => {
       const sorted = [...g.players].sort((a, b) => b.completion_pct - a.completion_pct);
       return sorted.length >= 2 ? sorted[0].completion_pct - sorted[1].completion_pct : 0;
@@ -247,7 +252,7 @@ export function LeaderboardPage() {
       });
     }
     return sorted;
-  }, [gamesData, sgPlatform, sgSort]);
+  }, [gamesData, sgPlatform, sgSearch, sgSort]);
 
   const selectClass = "rounded-lg border border-line bg-ink-800 px-2 py-1 text-xs text-slate-200";
 
@@ -329,6 +334,15 @@ export function LeaderboardPage() {
           Games in Common
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <div className="relative">
+            <Search size={13} className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-faint" />
+            <input
+              value={sgSearch}
+              onChange={(e) => setSgSearch(e.target.value)}
+              placeholder="Search games…"
+              className="rounded-lg border border-line bg-ink-800 py-1 pl-7 pr-2 text-xs text-slate-200 placeholder:text-faint"
+            />
+          </div>
           <select value={sgSort} onChange={(e) => setSgSort(e.target.value as SharedGamesSort)} className={selectClass}>
             {(Object.keys(SHARED_SORT_LABEL) as SharedGamesSort[]).map((k) => (
               <option key={k} value={k}>Sort: {SHARED_SORT_LABEL[k]}</option>
@@ -350,7 +364,9 @@ export function LeaderboardPage() {
         <div className="py-8 text-center text-muted">Loading…</div>
       ) : filteredSharedGames.length === 0 ? (
         <div className="rounded-card border border-line bg-ink-850 p-6 text-center text-sm text-muted">
-          No shared games yet — once two of you own the same game, it'll show up here.
+          {gamesData.games.length === 0
+            ? "No shared games yet — once two of you own the same game, it'll show up here."
+            : "No shared games match your search/filter."}
         </div>
       ) : (
         <div className="grid gap-2.5 sm:grid-cols-2">
