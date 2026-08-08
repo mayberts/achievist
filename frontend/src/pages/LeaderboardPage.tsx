@@ -143,6 +143,7 @@ export function LeaderboardPage() {
   const [gamesData, setGamesData] = useState<SharedGamesResponse | null>(null);
   const [comparing, setComparing] = useState<number | null>(null);
   const [activityEvents, setActivityEvents] = useState<FamilyUnlockEvent[]>([]);
+  const [activityLoaded, setActivityLoaded] = useState(false);
 
   useEffect(() => {
     api.leaderboard().then(setData).catch(() => setData(null));
@@ -160,6 +161,7 @@ export function LeaderboardPage() {
           cursor = res.events[res.events.length - 1].unlocked_at;
           setActivityEvents((prev) => [...res.events].reverse().concat(prev).slice(0, 50));
         }
+        setActivityLoaded(true);
       } catch {
         /* ignore */
       }
@@ -180,16 +182,22 @@ export function LeaderboardPage() {
 
   return (
     <div>
-      {activityEvents.length > 0 && (
+      {activityLoaded && (
         <div className="mb-8 rounded-card border border-line bg-ink-850 p-4">
           <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-200">
             <Activity size={15} className="text-faint" /> Family Activity
           </div>
-          <div className="max-h-80 space-y-2 overflow-y-auto">
-            {activityEvents.map((e, i) => (
-              <ActivityRow key={`${e.unlocked_at}-${e.username}-${i}`} event={e} />
-            ))}
-          </div>
+          {activityEvents.length === 0 ? (
+            <div className="py-6 text-center text-sm text-muted">
+              No recent activity yet — achievements will show up here as they're unlocked.
+            </div>
+          ) : (
+            <div className="max-h-80 space-y-2 overflow-y-auto">
+              {activityEvents.map((e, i) => (
+                <ActivityRow key={`${e.unlocked_at}-${e.username}-${i}`} event={e} />
+              ))}
+            </div>
+          )}
         </div>
       )}
 
