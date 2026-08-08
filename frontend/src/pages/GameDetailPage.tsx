@@ -122,10 +122,9 @@ export function GameDetailPage() {
 
   const art = game ? banner(game) : null;
   const pct = Math.round(game?.completion_pct ?? 0);
-  const storeUrl =
-    game && PLATFORM_META[game.platform]?.storeUrl
-      ? PLATFORM_META[game.platform].storeUrl!(game)
-      : null;
+  const storeMeta = game ? PLATFORM_META[game.platform] : null;
+  const storeUrl = game && storeMeta?.storeUrl ? storeMeta.storeUrl(game) : null;
+  const storeUrlIsSearch = storeMeta?.storeUrlIsSearch ?? false;
 
   const hltbParts = game
     ? [
@@ -198,9 +197,10 @@ export function GameDetailPage() {
                     href={storeUrl}
                     target="_blank"
                     rel="noopener"
+                    title={storeUrlIsSearch ? "Search the store for this game — not a guaranteed exact match" : undefined}
                     className="inline-flex items-center gap-1 text-xs text-accent hover:underline"
                   >
-                    Store <ExternalLink size={11} />
+                    {storeUrlIsSearch ? "Search Store" : "Store"} <ExternalLink size={11} />
                   </a>
                 )}
                 {game && (
