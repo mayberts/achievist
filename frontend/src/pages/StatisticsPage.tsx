@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   ResponsiveContainer,
   AreaChart,
@@ -11,17 +11,51 @@ import {
   Cell,
   CartesianGrid,
 } from "recharts";
-import { Trophy, Lock, Gamepad2, Crown, CheckCircle2, Percent, Flame, CalendarDays } from "lucide-react";
+import {
+  Trophy, Lock, Gamepad2, Crown, CheckCircle2, Percent, Flame, CalendarDays, Sparkles,
+} from "lucide-react";
 import { platformLabel } from "../lib/platforms";
 import { fmtDate } from "../lib/format";
 import { RARITY_TIER_HEX } from "../lib/rarity";
+
+interface ProgressionPoint {
+  month: string;
+  cnt: number;
+  total: number;
+}
+
+interface OnThisDayEntry {
+  years_ago: number;
+  unlocked_at: string;
+  achievement_name: string;
+  icon_url: string | null;
+  game_name: string;
+  platform: string;
+}
 
 interface Stats {
   general: Record<string, number | string | null>;
   rarity: { tier: string; cnt: number }[];
   completion_dist: { bracket: string; cnt: number }[];
   platforms: { platform: string; earned: number }[];
-  progression: { month: string; total: number }[];
+  progression: ProgressionPoint[];
+  points_progression: ProgressionPoint[];
+  progression_years: number[];
+  on_this_day: OnThisDayEntry[];
+}
+
+const MONTH_LABELS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+/** All-time: cumulative running total, labeled YYYY-MM. A single year: per-month count, zero-filled Jan–Dec. */
+function chartData(points: ProgressionPoint[], year: number | "all") {
+  if (year === "all") {
+    return points.map((p) => ({ label: p.month.slice(0, 7), value: p.total }));
+  }
+  const byMonth = new Map(points.filter((p) => p.month.startsWith(`${year}-`)).map((p) => [p.month.slice(5, 7), p.cnt]));
+  return MONTH_LABELS.map((label, i) => ({
+    label,
+    value: byMonth.get(String(i + 1).padStart(2, "0")) ?? 0,
+  }));
 }
 
 const CHART_TOOLTIP = { background: "#121826", border: "1px solid #232c42", borderRadius: 8 } as const;
@@ -50,16 +84,19 @@ function Record({ label, value, sub }: { label: string; value: string; sub?: str
 
 export function StatisticsPage() {
   const [stats, setStats] = useState<Stats | null>(null);
+  const [year, setYear] = useState<number | "all">("all");
 
   useEffect(() => {
     fetch("/api/statistics").then((r) => r.json()).then(setStats).catch(() => setStats(null));
   }, []);
 
+  const achievementsChart = useMemo(() => (stats ? chartData(stats.progression, year) : []), [stats, year]);
+  const pointsChart = useMemo(() => (stats ? chartData(stats.points_progression, year) : []), [stats, year]);
+
   if (!stats) return <div className="py-16 text-center text-muted">Loading statistics…</div>;
 
   const g = stats.general;
   const num = (k: string) => Number(g[k] ?? 0);
-  const progression = stats.progression.map((p) => ({ ...p, label: p.month.slice(0, 7) }));
   const platforms = stats.platforms
     .map((p) => ({ name: platformLabel(p.platform), earned: p.earned }))
     .sort((a, b) => b.earned - a.earned);
@@ -81,7 +118,7 @@ export function StatisticsPage() {
       </div>
 
       {/* records */}
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Record
           label="Best day"
           value={`${num("daily_max").toLocaleString()} achievements`}
@@ -91,6 +128,11 @@ export function StatisticsPage() {
           label="Best month"
           value={`${num("best_month_cnt").toLocaleString()} achievements`}
           sub={g.best_month ? String(g.best_month).slice(0, 7) : undefined}
+        />
+        <Record
+          label="Backlog"
+          value={`${num("active_games").toLocaleString()} active`}
+          sub={`${num("untouched_games").toLocaleString()} untouched`}
         />
         <Record
           label="Longest streak"
@@ -103,13 +145,54 @@ export function StatisticsPage() {
         />
       </div>
 
+      {/* on this day */}
+      {stats.on_this_day.length > 0 && (
+        <div className="rounded-card border border-line bg-ink-850 p-4">
+          <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-200">
+            <Sparkles size={15} className="text-faint" /> On this day
+          </div>
+          <div className="space-y-2">
+            {stats.on_this_day.map((e, i) => (
+              <div key={i} className="flex items-center gap-3 rounded-lg bg-ink-800 px-3 py-2">
+                {e.icon_url ? (
+                  <img src={e.icon_url} alt="" className="h-8 w-8 shrink-0 rounded" />
+                ) : (
+                  <div className="h-8 w-8 shrink-0 rounded bg-ink-700" />
+                )}
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-sm font-medium text-slate-100">{e.achievement_name}</div>
+                  <div className="truncate text-xs text-muted">
+                    {e.game_name} · {platformLabel(e.platform)}
+                  </div>
+                </div>
+                <div className="shrink-0 text-xs text-faint">
+                  {e.years_ago} {e.years_ago === 1 ? "year" : "years"} ago
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* progression */}
       <div className="rounded-card border border-line bg-ink-850 p-4">
-        <div className="mb-4 flex items-center gap-2 text-sm font-semibold text-slate-200">
-          <CalendarDays size={15} className="text-faint" /> Achievements over time
+        <div className="mb-4 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 text-sm font-semibold text-slate-200">
+            <CalendarDays size={15} className="text-faint" /> Achievements over time
+          </div>
+          <select
+            value={year}
+            onChange={(e) => setYear(e.target.value === "all" ? "all" : Number(e.target.value))}
+            className="rounded-lg border border-line bg-ink-800 px-2 py-1 text-xs text-slate-200"
+          >
+            <option value="all">All time</option>
+            {stats.progression_years.map((y) => (
+              <option key={y} value={y}>{y}</option>
+            ))}
+          </select>
         </div>
         <ResponsiveContainer width="100%" height={260}>
-          <AreaChart data={progression}>
+          <AreaChart data={achievementsChart}>
             <defs>
               <linearGradient id="grad" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="0%" stopColor="#5b8cff" stopOpacity={0.5} />
@@ -118,9 +201,31 @@ export function StatisticsPage() {
             </defs>
             <CartesianGrid strokeDasharray="3 3" stroke="#232c42" />
             <XAxis dataKey="label" stroke="#4d5a75" fontSize={11} />
-            <YAxis stroke="#4d5a75" fontSize={11} />
+            <YAxis stroke="#4d5a75" fontSize={11} allowDecimals={false} />
             <Tooltip contentStyle={CHART_TOOLTIP} />
-            <Area type="monotone" dataKey="total" stroke="#5b8cff" fill="url(#grad)" strokeWidth={2} />
+            <Area type="monotone" dataKey="value" stroke="#5b8cff" fill="url(#grad)" strokeWidth={2} />
+          </AreaChart>
+        </ResponsiveContainer>
+      </div>
+
+      {/* points progression */}
+      <div className="rounded-card border border-line bg-ink-850 p-4">
+        <div className="mb-4 flex items-center gap-2 text-sm font-semibold text-slate-200">
+          <Trophy size={15} className="text-faint" /> Points {year === "all" ? "over time" : `earned in ${year}`}
+        </div>
+        <ResponsiveContainer width="100%" height={220}>
+          <AreaChart data={pointsChart}>
+            <defs>
+              <linearGradient id="gradPts" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#f0b429" stopOpacity={0.5} />
+                <stop offset="100%" stopColor="#f0b429" stopOpacity={0} />
+              </linearGradient>
+            </defs>
+            <CartesianGrid strokeDasharray="3 3" stroke="#232c42" />
+            <XAxis dataKey="label" stroke="#4d5a75" fontSize={11} />
+            <YAxis stroke="#4d5a75" fontSize={11} allowDecimals={false} />
+            <Tooltip contentStyle={CHART_TOOLTIP} />
+            <Area type="monotone" dataKey="value" stroke="#f0b429" fill="url(#gradPts)" strokeWidth={2} />
           </AreaChart>
         </ResponsiveContainer>
       </div>
