@@ -51,15 +51,16 @@ export function GameComparePage() {
           {!data && !error && <div className="py-16 text-center text-muted">Loading…</div>}
 
           {data && (
-            <>
+            <div style={{ minWidth: 240 + data.owners.length * 88 }}>
               {/* sticky header row naming each owner column */}
               <div className="sticky top-0 z-10 flex items-center gap-3 border-b border-line bg-ink-850 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-faint">
-                <div className="flex-1">Achievement</div>
+                <div className="min-w-[160px] flex-1">Achievement</div>
                 {data.owners.map((o) => (
-                  <div key={o.user_id} className="w-16 flex-shrink-0 truncate text-center" title={o.display_name || o.username}>
+                  <div key={o.user_id} className="flex w-20 flex-shrink-0 justify-center truncate text-center" title={o.display_name || o.username}>
                     {o.display_name || o.username}
                   </div>
                 ))}
+                <div className="w-[30px] flex-shrink-0" />
               </div>
 
               <div className="divide-y divide-line">
@@ -74,7 +75,7 @@ export function GameComparePage() {
                           <Trophy size={15} />
                         )}
                       </div>
-                      <div className="min-w-0 flex-1">
+                      <div className="min-w-[160px] flex-1">
                         <div className="truncate text-sm font-medium text-slate-100">{a.name || "Hidden achievement"}</div>
                         <div className="flex items-center gap-2 text-xs text-faint">
                           {tier && <span className={RARITY_TIER_CLASS[tier]}>{tier}</span>}
@@ -84,7 +85,7 @@ export function GameComparePage() {
                       {data.owners.map((o) => {
                         const u = a.per_user.find((p) => p.user_id === o.user_id);
                         return (
-                          <div key={o.user_id} className="flex w-16 flex-shrink-0 justify-center">
+                          <div key={o.user_id} className="flex w-20 flex-shrink-0 justify-center">
                             {u?.unlocked ? (
                               <span
                                 className="flex h-6 w-6 items-center justify-center rounded-full bg-good/15 text-good"
@@ -110,7 +111,7 @@ export function GameComparePage() {
                         target="_blank"
                         rel="noopener noreferrer"
                         title="Find a guide for this achievement"
-                        className="flex-shrink-0 rounded-md p-1.5 text-faint transition hover:bg-ink-700 hover:text-accent"
+                        className="w-[30px] flex-shrink-0 rounded-md p-1.5 text-faint transition hover:bg-ink-700 hover:text-accent"
                       >
                         <ExternalLink size={14} />
                       </a>
@@ -118,7 +119,7 @@ export function GameComparePage() {
                   );
                 })}
               </div>
-            </>
+            </div>
           )}
         </div>
       </div>
