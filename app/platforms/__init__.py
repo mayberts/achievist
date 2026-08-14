@@ -9,6 +9,7 @@ from app.platforms.psn import PSNPlatform
 from app.platforms.ea import EAPlatform
 from app.platforms.googleplay import GooglePlayPlatform
 from app.platforms.gog import GOGPlatform
+from app.platforms.roblox import RobloxPlatform
 
 PLATFORMS = {
     "steam": SteamPlatform,
@@ -22,4 +23,5 @@ PLATFORMS = {
     "ea": EAPlatform,
     "googleplay": GooglePlayPlatform,
     "gog": GOGPlatform,
+    "roblox": RobloxPlatform,
 }

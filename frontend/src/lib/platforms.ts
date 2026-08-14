@@ -93,6 +93,15 @@ export const PLATFORM_META: Record<string, PlatformMeta> = {
     storeUrl: (g) => `https://www.gog.com/games?query=${encodeURIComponent(g.name)}`,
     storeUrlIsSearch: true,
   },
+  roblox: {
+    label: "Roblox",
+    badge: "bg-[#2a0a0a]/20 text-[#e2231a] border-[#e2231a]",
+    dot: "#e2231a",
+    // store_id is the root place id, which is what the game page URL needs
+    // (platform_app_id is the universe id, a different, unlinkable number).
+    storeUrl: (g) => (g.store_id ? `https://www.roblox.com/games/${g.store_id}` : `https://www.roblox.com/discover/?Keyword=${encodeURIComponent(g.name)}`),
+    storeUrlIsSearch: true,
+  },
 };
 
 export function platformLabel(platform: string): string {
