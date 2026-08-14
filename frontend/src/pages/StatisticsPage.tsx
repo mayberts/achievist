@@ -116,8 +116,15 @@ export function StatisticsPage() {
         const perGame = await Promise.all(
           recent.map(async (g) => {
             const achievements = await api.gameAchievements(g.platform_game_id).catch(() => []);
+            // A game with a huge locked achievement list (e.g. an
+            // achievement-farm title with thousands of near-0%-rarity
+            // entries) would otherwise fill every slot on rarity alone —
+            // cap each game's contribution so the list actually spans your
+            // recently played games instead of just the spammiest one.
             return achievements
               .filter((a) => !a.unlocked && a.rarity_pct != null)
+              .sort((a, b) => (a.rarity_pct as number) - (b.rarity_pct as number))
+              .slice(0, 2)
               .map((a) => ({
                 platform_game_id: g.platform_game_id,
                 platform_ach_id: a.platform_ach_id,
