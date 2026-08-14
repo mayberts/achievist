@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   ResponsiveContainer,
   AreaChart,
@@ -12,11 +13,13 @@ import {
   CartesianGrid,
 } from "recharts";
 import {
-  Trophy, Lock, Gamepad2, Crown, CheckCircle2, Percent, Flame, CalendarDays, Sparkles,
+  Trophy, Lock, Gamepad2, Crown, CheckCircle2, Percent, Flame, CalendarDays, Sparkles, Target,
 } from "lucide-react";
+import { api } from "../api";
 import { platformLabel } from "../lib/platforms";
 import { fmtDate } from "../lib/format";
-import { RARITY_TIER_HEX } from "../lib/rarity";
+import { RARITY_TIER_HEX, RARITY_TIER_CLASS, rarityTier } from "../lib/rarity";
+import type { AchievementSearchResult } from "../types";
 
 interface ProgressionPoint {
   month: string;
@@ -85,9 +88,15 @@ function Record({ label, value, sub }: { label: string; value: string; sub?: str
 export function StatisticsPage() {
   const [stats, setStats] = useState<Stats | null>(null);
   const [year, setYear] = useState<number | "all">("all");
+  const [chaseList, setChaseList] = useState<AchievementSearchResult[] | null>(null);
+  const navigate = useNavigate();
 
   useEffect(() => {
     fetch("/api/statistics").then((r) => r.json()).then(setStats).catch(() => setStats(null));
+    api
+      .searchAchievements({ unlocked: "false", sort: "rarity", page_size: 8 })
+      .then((r) => setChaseList(r.achievements.filter((a) => a.rarity_pct != null)))
+      .catch(() => setChaseList([]));
   }, []);
 
   const achievementsChart = useMemo(() => (stats ? chartData(stats.progression, year) : []), [stats, year]);
@@ -116,6 +125,49 @@ export function StatisticsPage() {
         <Tile icon={<Percent size={15} />} label="Overall" value={`${g.absolute_completion ?? 0}%`} />
         <Tile icon={<Flame size={15} />} label="Best streak" value={`${num("best_streak_days")}d`} />
       </div>
+
+      {/* chase list */}
+      {chaseList && chaseList.length > 0 && (
+        <div className="rounded-card border border-line bg-ink-850 p-4">
+          <div className="mb-3 flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 text-sm font-semibold text-slate-200">
+              <Target size={15} className="text-faint" /> Chase list
+            </div>
+            <button
+              onClick={() => navigate("/?tab=achievements&unlocked=false&sort=rarity")}
+              className="text-xs text-muted transition hover:text-slate-200"
+            >
+              See all locked, rarest first →
+            </button>
+          </div>
+          <div className="space-y-2">
+            {chaseList.map((a) => (
+              <button
+                key={`${a.platform_game_id}-${a.platform_ach_id}`}
+                onClick={() => navigate(`/games/${a.platform_game_id}`)}
+                className="flex w-full items-center gap-3 rounded-lg bg-ink-800 px-3 py-2 text-left transition hover:bg-ink-700"
+              >
+                {a.icon_url ? (
+                  <img src={a.icon_url} alt="" className="h-8 w-8 shrink-0 rounded grayscale" />
+                ) : (
+                  <div className="h-8 w-8 shrink-0 rounded bg-ink-700" />
+                )}
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-sm font-medium text-slate-100">{a.name}</div>
+                  <div className="truncate text-xs text-muted">
+                    {a.game_name} · {platformLabel(a.platform)}
+                  </div>
+                </div>
+                {a.rarity_pct != null && (
+                  <div className={`shrink-0 text-xs font-semibold ${RARITY_TIER_CLASS[rarityTier(a.rarity_pct)]}`}>
+                    {a.rarity_pct}%
+                  </div>
+                )}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* records */}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">

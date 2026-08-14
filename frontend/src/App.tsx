@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useRef, lazy, Suspense } from "react";
-import { Route, Routes, useNavigate } from "react-router-dom";
+import { Route, Routes, useNavigate, useSearchParams } from "react-router-dom";
 import { LogOut, RefreshCw, Trophy } from "lucide-react";
 import { api } from "./api";
 import type { Summary, SyncProgress } from "./types";
@@ -32,6 +32,18 @@ export default function App() {
   const wasRunning = useRef(false);
   const navigate = useNavigate();
   const { user, logout } = useAuth();
+  const [searchParams] = useSearchParams();
+
+  // A cross-tab deep link (e.g. Statistics' "chase list" → Achievements,
+  // pre-filtered) arrives as a ?tab= param on the catch-all route rather
+  // than a real route, since tab switching is plain component state, not
+  // routed. Only reads it on mount/navigation, never writes it back, so it
+  // doesn't fight with AchievementsPage's own useSearchParams-driven filters.
+  useEffect(() => {
+    const t = searchParams.get("tab") as Tab | null;
+    if (t) setTab(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
 
   const loadSummary = useCallback(() => {
     api.summary().then(setSummary).catch(() => setSummary(null));
