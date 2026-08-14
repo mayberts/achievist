@@ -19,7 +19,22 @@ import { api } from "../api";
 import { platformLabel } from "../lib/platforms";
 import { fmtDate } from "../lib/format";
 import { RARITY_TIER_HEX, RARITY_TIER_CLASS, rarityTier } from "../lib/rarity";
-import type { AchievementSearchResult } from "../types";
+
+interface ChaseItem {
+  platform_game_id: number;
+  platform_ach_id: string;
+  name: string | null;
+  icon_url: string | null;
+  rarity_pct: number;
+  game_name: string;
+  platform: string;
+}
+
+// How many of the most-recently-played games to pull locked achievements
+// from — keeps the list actionable (games you're actually in the middle of)
+// rather than the rarest achievement in your entire library, which could be
+// sitting in something you last touched years ago.
+const CHASE_RECENT_GAMES = 5;
 
 interface ProgressionPoint {
   month: string;
@@ -88,14 +103,34 @@ function Record({ label, value, sub }: { label: string; value: string; sub?: str
 export function StatisticsPage() {
   const [stats, setStats] = useState<Stats | null>(null);
   const [year, setYear] = useState<number | "all">("all");
-  const [chaseList, setChaseList] = useState<AchievementSearchResult[] | null>(null);
+  const [chaseList, setChaseList] = useState<ChaseItem[] | null>(null);
   const navigate = useNavigate();
 
   useEffect(() => {
     fetch("/api/statistics").then((r) => r.json()).then(setStats).catch(() => setStats(null));
+
     api
-      .searchAchievements({ unlocked: "false", sort: "rarity", page_size: 8 })
-      .then((r) => setChaseList(r.achievements.filter((a) => a.rarity_pct != null)))
+      .games({ sort: "recent", page_size: CHASE_RECENT_GAMES })
+      .then(async (r) => {
+        const recent = r.games.filter((g) => g.last_played_at && g.earned_achievements < g.total_achievements);
+        const perGame = await Promise.all(
+          recent.map(async (g) => {
+            const achievements = await api.gameAchievements(g.platform_game_id).catch(() => []);
+            return achievements
+              .filter((a) => !a.unlocked && a.rarity_pct != null)
+              .map((a) => ({
+                platform_game_id: g.platform_game_id,
+                platform_ach_id: a.platform_ach_id,
+                name: a.name,
+                icon_url: a.icon_url,
+                rarity_pct: a.rarity_pct as number,
+                game_name: g.name,
+                platform: g.platform,
+              }));
+          }),
+        );
+        setChaseList(perGame.flat().sort((a, b) => a.rarity_pct - b.rarity_pct).slice(0, 8));
+      })
       .catch(() => setChaseList([]));
   }, []);
 
@@ -132,12 +167,13 @@ export function StatisticsPage() {
           <div className="mb-3 flex items-center justify-between gap-2">
             <div className="flex items-center gap-2 text-sm font-semibold text-slate-200">
               <Target size={15} className="text-faint" /> Chase list
+              <span className="font-normal text-faint">— rarest locked, in what you're playing now</span>
             </div>
             <button
               onClick={() => navigate("/?tab=achievements&unlocked=false&sort=rarity")}
-              className="text-xs text-muted transition hover:text-slate-200"
+              className="shrink-0 text-xs text-muted transition hover:text-slate-200"
             >
-              See all locked, rarest first →
+              See rarest locked in your whole library →
             </button>
           </div>
           <div className="space-y-2">
