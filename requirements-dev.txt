@@ -1,3 +1,5 @@
 -r requirements.txt
 pytest==8.3.4
 pytest-asyncio==0.25.0
+# Browser smoke tests (e2e/); needs `playwright install chromium` too.
+playwright==1.49.1
