@@ -13,7 +13,7 @@ import {
   CartesianGrid,
 } from "recharts";
 import {
-  Trophy, Lock, Gamepad2, Crown, CheckCircle2, Percent, Flame, CalendarDays, Sparkles, Target,
+  Trophy, Lock, Gamepad2, Crown, CheckCircle2, Percent, Flame, CalendarDays, Sparkles, Target, Zap,
 } from "lucide-react";
 import { api } from "../api";
 import { platformLabel } from "../lib/platforms";
@@ -35,6 +35,17 @@ interface ChaseItem {
 // rather than the rarest achievement in your entire library, which could be
 // sitting in something you last touched years ago.
 const CHASE_RECENT_GAMES = 5;
+
+interface QuickWinItem {
+  platform_game_id: number;
+  name: string;
+  platform: string;
+  icon_url: string | null;
+  earned_achievements: number;
+  total_achievements: number;
+  completion_pct: number;
+  remaining: number;
+}
 
 interface ProgressionPoint {
   month: string;
@@ -104,10 +115,31 @@ export function StatisticsPage() {
   const [stats, setStats] = useState<Stats | null>(null);
   const [year, setYear] = useState<number | "all">("all");
   const [chaseList, setChaseList] = useState<ChaseItem[] | null>(null);
+  const [quickWins, setQuickWins] = useState<QuickWinItem[] | null>(null);
   const navigate = useNavigate();
 
   useEffect(() => {
     fetch("/api/statistics").then((r) => r.json()).then(setStats).catch(() => setStats(null));
+
+    api
+      .games({ sort: "completion", completion: "in_progress", page_size: 200 })
+      .then((r) => {
+        const wins = r.games
+          .map((g) => ({
+            platform_game_id: g.platform_game_id,
+            name: g.name,
+            platform: g.platform,
+            icon_url: g.icon_url,
+            earned_achievements: g.earned_achievements,
+            total_achievements: g.total_achievements,
+            completion_pct: g.completion_pct,
+            remaining: g.total_achievements - g.earned_achievements,
+          }))
+          .sort((a, b) => a.remaining - b.remaining)
+          .slice(0, 8);
+        setQuickWins(wins);
+      })
+      .catch(() => setQuickWins([]));
 
     api
       .games({ sort: "recent", page_size: CHASE_RECENT_GAMES })
@@ -167,6 +199,44 @@ export function StatisticsPage() {
         <Tile icon={<Percent size={15} />} label="Overall" value={`${g.absolute_completion ?? 0}%`} />
         <Tile icon={<Flame size={15} />} label="Best streak" value={`${num("best_streak_days")}d`} />
       </div>
+
+      {/* quick wins */}
+      {quickWins && quickWins.length > 0 && (
+        <div className="rounded-card border border-line bg-ink-850 p-4">
+          <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-200">
+            <Zap size={15} className="text-faint" /> Quick wins
+            <span className="font-normal text-faint">— closest to done</span>
+          </div>
+          <div className="space-y-2">
+            {quickWins.map((g) => (
+              <button
+                key={g.platform_game_id}
+                onClick={() => navigate(`/games/${g.platform_game_id}`)}
+                className="flex w-full items-center gap-3 rounded-lg bg-ink-800 px-3 py-2 text-left transition hover:bg-ink-700"
+              >
+                {g.icon_url ? (
+                  <img src={g.icon_url} alt="" className="h-8 w-8 shrink-0 rounded" />
+                ) : (
+                  <div className="h-8 w-8 shrink-0 rounded bg-ink-700" />
+                )}
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-sm font-medium text-slate-100">{g.name}</div>
+                  <div className="mt-1 flex items-center gap-2">
+                    <div className="h-1.5 max-w-40 flex-1 overflow-hidden rounded-full bg-ink-900/80">
+                      <div className="h-full rounded-full bg-accent-soft" style={{ width: `${g.completion_pct}%` }} />
+                    </div>
+                    <span className="shrink-0 text-[11px] text-muted">{platformLabel(g.platform)}</span>
+                  </div>
+                </div>
+                <div className="shrink-0 text-right text-xs font-semibold text-slate-200">
+                  {g.remaining} left
+                  <div className="font-normal text-faint">{Math.round(g.completion_pct)}%</div>
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* chase list */}
       {chaseList && chaseList.length > 0 && (
