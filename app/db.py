@@ -578,7 +578,15 @@ async def upsert_platform_game(conn, platform: str, platform_app_id: str, name: 
 async def upsert_user_game(conn, linked_account_id: int, platform_game_id: int,
                             playtime_minutes: int, earned: int, total: int,
                             last_played_at=None) -> None:
-    pct = round(earned / total * 100, 1) if total else 0
+    # Clamped at 100 because a platform's own counters occasionally disagree
+    # with each other and report more earned achievements than the game lists
+    # as its total. A completion above 100% is meaningless to a reader, and it
+    # used to fall outside *every* bucket downstream: the "mastered"/"perfect
+    # games" counts tested `completion_pct = 100`, and the 80-99% "finished"
+    # band excludes it too, so a game that was more than finished showed up as
+    # neither. The raw earned/total counts are still stored as reported, so
+    # oddly-counted games remain visible for what they are.
+    pct = min(100, round(earned / total * 100, 1)) if total else 0
     await conn.execute(
         """
         INSERT INTO user_games
