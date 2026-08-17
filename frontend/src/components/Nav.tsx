@@ -1,6 +1,7 @@
-import { Gamepad2, Settings2, BarChart3, Activity, Wrench, Trophy, Crown } from "lucide-react";
+import { Gamepad2, Settings2, BarChart3, Activity, Wrench, Trophy, Crown, House } from "lucide-react";
 
 export type Tab =
+  | "home"
   | "games"
   | "achievements"
   | "activity"
@@ -10,6 +11,7 @@ export type Tab =
   | "maintenance";
 
 const TABS: { key: Tab; label: string; icon: React.ReactNode }[] = [
+  { key: "home", label: "Home", icon: <House size={16} /> },
   { key: "games", label: "Games", icon: <Gamepad2 size={16} /> },
   { key: "achievements", label: "Achievements", icon: <Trophy size={16} /> },
   { key: "activity", label: "Activity", icon: <Activity size={16} /> },
