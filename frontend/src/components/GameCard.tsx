@@ -1,6 +1,6 @@
-import { Trophy, Clock, Calendar } from "lucide-react";
+import { Trophy, Clock, Calendar, Hourglass } from "lucide-react";
 import type { Game } from "../types";
-import { fmtPlaytime, fmtDate } from "../lib/format";
+import { fmtPlaytime, fmtDate, fmtHours } from "../lib/format";
 import { PlatformBadge } from "./PlatformBadge";
 
 // Only sgdb_cover_url is genuine landscape art (SGDB's 460x215/920x430 grids,
@@ -15,12 +15,24 @@ function fallbackArt(g: Game): string | null {
   return g.igdb_cover_url || g.icon_url || null;
 }
 
-export function GameCard({ game, onClick }: { game: Game; onClick?: () => void }) {
+export function GameCard({
+  game,
+  onClick,
+  showRemaining,
+}: {
+  game: Game;
+  onClick?: () => void;
+  // Surfaces the estimated hours left to 100%. Only shown when that's what
+  // the list is ordered by, so the ordering is legible instead of looking
+  // arbitrary — it's noise on every other sort.
+  showRemaining?: boolean;
+}) {
   const wide = landscapeArt(game);
   const fallback = !wide ? fallbackArt(game) : null;
   const pct = Math.round(game.completion_pct ?? 0);
   const playtime = fmtPlaytime(game.playtime_minutes);
   const played = fmtDate(game.last_played_at);
+  const remaining = showRemaining ? fmtHours(game.hltb_remaining) : null;
   const tag =
     pct >= 100 ? { label: "Mastered", cls: "bg-accent/20 text-accent" } :
     pct >= 80 ? { label: "Finished", cls: "bg-good/15 text-good" } :
@@ -99,6 +111,12 @@ export function GameCard({ game, onClick }: { game: Game; onClick?: () => void }
             <span className="inline-flex items-center gap-1">
               <Calendar size={12} className="text-faint" />
               {played}
+            </span>
+          )}
+          {remaining && (
+            <span className="inline-flex items-center gap-1 font-medium text-slate-300">
+              <Hourglass size={12} className="text-faint" />
+              ~{remaining} to 100%
             </span>
           )}
         </div>

@@ -3,7 +3,7 @@ import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { ArrowLeft, Trophy, Clock, Calendar, ExternalLink, Lock, ImageUp, Search, RefreshCw } from "lucide-react";
 import { api } from "../api";
 import type { Achievement, GameDetail } from "../types";
-import { fmtPlaytime, fmtDate, fmtNum } from "../lib/format";
+import { fmtPlaytime, fmtDate, fmtNum, fmtHours } from "../lib/format";
 import { PlatformBadge } from "../components/PlatformBadge";
 import { PLATFORM_META } from "../lib/platforms";
 import { RARITY_TIER_CLASS, RARITY_TIER_HEX, rarityTier } from "../lib/rarity";
@@ -12,11 +12,6 @@ import { ChangeCoverModal } from "../components/ChangeCoverModal";
 
 function banner(g: GameDetail): string | null {
   return g.sgdb_cover_url || g.igdb_cover_url || g.icon_url || null;
-}
-
-function hltb(h: number | null): string | null {
-  if (!h || h <= 0) return null;
-  return `${h}h`;
 }
 
 type StatusFilter = "all" | "unlocked" | "locked";
@@ -128,9 +123,9 @@ export function GameDetailPage() {
 
   const hltbParts = game
     ? [
-        ["Main", hltb(game.hltb_main)],
-        ["Main + Extra", hltb(game.hltb_extra)],
-        ["Completionist", hltb(game.hltb_complete)],
+        ["Main", fmtHours(game.hltb_main)],
+        ["Main + Extra", fmtHours(game.hltb_extra)],
+        ["Completionist", fmtHours(game.hltb_complete)],
       ].filter(([, v]) => v)
     : [];
 

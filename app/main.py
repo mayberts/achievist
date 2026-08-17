@@ -705,9 +705,22 @@ async def summary(user: dict = Depends(require_user)):
     }
 
 
+# Estimated hours still needed to reach 100% on a game: its How Long To Beat
+# completionist figure scaled by the fraction of achievements still unearned.
+# NULL whenever there's no usable figure — never looked up, or HLTB had none
+# (the enrichment stores -1 in hltb_main for that case and leaves the rest
+# NULL) — so callers can sort those last rather than treating "unknown" as
+# "instant". Both columns are NUMERIC, so ROUND(value, 1) needs no cast.
+_HLTB_REMAINING_SQL = """
+        CASE WHEN pg.hltb_complete > 0
+             THEN ROUND(pg.hltb_complete * (100 - ug.completion_pct) / 100, 1)
+        END
+"""
+
+
 @app.get("/api/games")
 async def games(
-    sort: str = Query("recent", pattern="^(completion|recent|playtime|name)$"),
+    sort: str = Query("recent", pattern="^(completion|recent|playtime|name|fastest)$"),
     platform: str | None = None,
     search: str | None = None,
     completion: str | None = Query(None, pattern="^(completed|in_progress|not_started)$"),
@@ -724,6 +737,14 @@ async def games(
         "recent": "ug.last_played_at DESC NULLS LAST, pg.id",
         "playtime": "ug.playtime_minutes DESC, pg.id",
         "name": "pg.name ASC, pg.id",
+        # Already-mastered games sort last however little time they'd "need":
+        # there's no remaining time to spend on a game that's already at 100%,
+        # so they'd otherwise pin themselves to the top of a list whose whole
+        # purpose is picking what to finish next.
+        "fastest": (
+            "CASE WHEN ug.completion_pct >= 100 THEN 1 ELSE 0 END, "
+            f"({_HLTB_REMAINING_SQL}) ASC NULLS LAST, pg.id"
+        ),
     }[sort]
 
     filters = ["ug.total_achievements > 0", "la.user_id = %s"]
@@ -774,7 +795,8 @@ async def games(
                 ug.earned_achievements,
                 ug.total_achievements,
                 ug.completion_pct,
-                ug.last_played_at
+                ug.last_played_at,
+                {_HLTB_REMAINING_SQL} AS hltb_remaining
             FROM user_games ug
             JOIN platform_games pg ON pg.id = ug.platform_game_id
             JOIN linked_accounts la ON la.id = ug.linked_account_id
