@@ -7,7 +7,7 @@ in via PUT /api/profile, except the requesting user always sees themself.
 import httpx
 import pytest
 
-from app import auth, db
+from app import auth, db, milestones
 from app.main import app
 from tests.conftest import requires_db
 
@@ -57,9 +57,13 @@ async def test_leaderboard_includes_opted_in_users(db_conn, client):
     assert resp.status_code == 200
     entries = {e["username"]: e for e in resp.json()["entries"]}
     assert set(entries) == {"parent", "kid"}
-    # 15 pts/achievement for unrated rarity: kid has 5 unlocked, parent has 2
-    assert entries["kid"]["achievist_points"] == 75
-    assert entries["parent"]["achievist_points"] == 30
+    # 15 pts/achievement for unrated rarity: kid has 5 unlocked, parent has 2.
+    # _seed_achievements completes every game it creates, so both also clear the
+    # first mastered-game milestone, whose award is part of the headline score.
+    first_mastered = milestones.mastered_milestone_points(1)
+    assert entries["kid"]["achievist_points"] == 75 + first_mastered
+    assert entries["parent"]["achievist_points"] == 30 + first_mastered
+    assert entries["kid"]["milestone_points"] == first_mastered
     assert entries["kid"]["achievements_unlocked"] == 5
 
 

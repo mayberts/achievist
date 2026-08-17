@@ -148,6 +148,11 @@ async def get_leaderboard(
     users.share_stats — plus the requesting user themself even if they
     haven't opted in, so they can always see their own row.
 
+    achievist_points is the headline score: rarity-weighted unlock points
+    plus the awards for milestones passed. milestone_points is returned
+    alongside it as its own column so the total stays explainable — you can
+    always see how much of a score came from landmarks rather than grinding.
+
     `platform` scopes every stat (points, unlocked, games played/completed,
     milestone points) to that one platform. `since` scopes
     achievements_unlocked/achievist_points to unlocks on or after that
@@ -155,10 +160,10 @@ async def get_leaderboard(
     games_completed and milestone_points stay all-time even then, since
     user_games has no per-unlock timestamp to window by.
 
-    milestone_points is deliberately its own column rather than folded into
-    achievist_points: that score is defined as rarity-weighted per unlock
-    (and described that way in the UI), so mixing a different kind of award
-    into it would make the number unexplainable.
+    That last point is why milestone awards are only folded into
+    achievist_points on the all-time view: they can't be attributed to a
+    week or a month, so adding an all-time figure to a windowed unlock total
+    would swamp it and leave the window meaning nothing.
     """
     return await _fetch(
         conn,
@@ -201,37 +206,51 @@ async def get_leaderboard(
             JOIN platform_games pg ON pg.id = ug.platform_game_id
             WHERE %s::text IS NULL OR pg.platform = %s
             GROUP BY la.user_id
+        ),
+        milestone_stats AS (
+            -- Points from every milestone a user has passed. Derived from
+            -- their current totals rather than from unlock history, so it
+            -- needs no per-milestone timestamps here; that also means it is
+            -- always all-time, like games_played/games_completed and for the
+            -- same reason.
+            SELECT
+                g.user_id,
+                COALESCE((
+                    SELECT SUM(m.points)
+                    FROM (VALUES {_ACH_MILESTONE_VALUES}) AS m(threshold, points)
+                    WHERE m.threshold <= g.total_earned
+                ), 0) + COALESCE((
+                    SELECT SUM(m.points)
+                    FROM (VALUES {_MASTERED_MILESTONE_VALUES}) AS m(threshold, points)
+                    WHERE m.threshold <= g.games_completed
+                ), 0) AS milestone_points
+            FROM game_stats g
         )
         SELECT
             u.id AS user_id,
             u.username,
             u.display_name,
             u.avatar_url,
-            COALESCE(ach.achievist_points, 0) AS achievist_points,
+            -- Milestone awards are part of the headline score, but only on the
+            -- all-time view: they can't be scoped to a week or a month (see
+            -- milestone_stats), so adding an all-time figure to a windowed
+            -- unlock total would swamp it and stop the window meaning anything.
+            COALESCE(ach.achievist_points, 0) + CASE
+                WHEN %s::timestamptz IS NULL THEN COALESCE(ms.milestone_points, 0)
+                ELSE 0
+            END AS achievist_points,
             COALESCE(ach.achievements_unlocked, 0) AS achievements_unlocked,
             COALESCE(g.games_played, 0) AS games_played,
             COALESCE(g.games_completed, 0) AS games_completed,
-            -- Points from every milestone this user has passed. Derived from
-            -- their current totals rather than from unlock history, so it
-            -- needs no per-milestone timestamps here; that also means it is
-            -- always all-time, like games_played/games_completed and for the
-            -- same reason.
-            COALESCE((
-                SELECT SUM(m.points)
-                FROM (VALUES {_ACH_MILESTONE_VALUES}) AS m(threshold, points)
-                WHERE m.threshold <= COALESCE(g.total_earned, 0)
-            ), 0) + COALESCE((
-                SELECT SUM(m.points)
-                FROM (VALUES {_MASTERED_MILESTONE_VALUES}) AS m(threshold, points)
-                WHERE m.threshold <= COALESCE(g.games_completed, 0)
-            ), 0) AS milestone_points
+            COALESCE(ms.milestone_points, 0) AS milestone_points
         FROM users u
         LEFT JOIN ach_stats ach ON ach.user_id = u.id
         LEFT JOIN game_stats g ON g.user_id = u.id
+        LEFT JOIN milestone_stats ms ON ms.user_id = u.id
         WHERE u.share_stats = true OR u.id = %s
         ORDER BY achievist_points DESC
         """,
-        platform, platform, since, since, platform, platform, requesting_user_id,
+        platform, platform, since, since, platform, platform, since, requesting_user_id,
     )
 
 

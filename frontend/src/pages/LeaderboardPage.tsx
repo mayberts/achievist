@@ -314,12 +314,13 @@ export function LeaderboardPage() {
       </div>
       <p className="mb-5 text-sm text-muted">
         Achievist Points weight each unlock by how rare it is (Legendary unlocks are worth far more
-        than common ones), so it stays fair across platforms and games. Only family members who've
-        opted in to sharing are shown here — you always see your own row. Milestone Points are a
-        separate award for passing landmarks (your 1,000th achievement, your 10th mastered game),
-        counted on their own rather than mixed into Achievist Points.
+        than common ones), so it stays fair across platforms and games, plus an award for every
+        landmark passed — your 1,000th achievement, your 10th mastered game. The Milestone Points on
+        each row are the share of that total which came from landmarks. Only family members who've
+        opted in to sharing are shown here — you always see your own row.
         {lbWindow !== "all" &&
-          " Games played/completed and Milestone Points always reflect all-time, even with a time window selected."}
+          " Games played/completed and Milestone Points always reflect all-time. A time window scores" +
+            " only the unlocks earned inside it, so milestone awards sit that one out."}
       </p>
 
       {!data ? (
