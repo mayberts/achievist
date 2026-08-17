@@ -190,13 +190,30 @@ page. Note the limit: jsdom has no real layout engine, so a purely visual
 regression (an element wrapping onto two lines, a colour that's hard to read)
 will pass here and still needs a look in a browser.
 
+### Browser smoke tests
+
+```bash
+cd frontend && npm ci && npm run build   # they drive the real app
+cd .. && playwright install chromium     # once
+E2E_DATABASE_URL=postgresql://postgres:postgres@localhost:5432/pantheon_e2e pytest e2e
+```
+
+A handful of Playwright tests that load the built app in Chromium and check
+what jsdom cannot: that no page scrolls sideways, that header and tab labels
+do not wrap, that panels render with real size. They live in `e2e/` rather
+than `tests/`, so a plain `pytest` neither runs them nor pretends to — run
+them by name. CI runs them as their own job.
+
+They are deliberately few. Anything assertable without a layout engine
+belongs in the Vitest tests, which are far quicker.
+
 ### Full stack locally
 
 ```bash
 docker compose up -d --build
 ```
 
-CI (`.github/workflows/test.yml`) runs the backend suite against a Postgres service container, plus the frontend tests and a production build, on every push and PR.
+CI (`.github/workflows/test.yml`) runs three jobs on every push and PR: the backend suite against a Postgres service container, the frontend tests plus a production build, and the browser smoke tests against the whole stack.
 
 ## Version control and updates
 

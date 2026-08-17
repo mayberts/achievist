@@ -51,3 +51,48 @@ jobs:
         working-directory: frontend
       - run: npm run build
         working-directory: frontend
+
+  e2e:
+    # Browser smoke tests: real layout, which jsdom cannot check. Needs the
+    # whole stack — a database, a built frontend and a running server — so it
+    # is its own job rather than bolted onto backend or frontend.
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: pantheon_e2e
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      E2E_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/pantheon_e2e
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+      - run: pip install -r requirements-dev.txt
+      - name: Cache the Playwright browser
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('requirements-dev.txt') }}
+      - run: playwright install --with-deps chromium
+      - run: npm ci
+        working-directory: frontend
+      # the tests drive the real app, which serves this build
+      - run: npm run build
+        working-directory: frontend
+      - run: pytest e2e -q

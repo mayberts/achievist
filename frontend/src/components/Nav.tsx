@@ -32,7 +32,11 @@ export function Nav({
 }) {
   return (
     <div className="relative -mx-3 sm:mx-0">
-      <nav className="flex gap-1 overflow-x-auto px-3 sm:overflow-visible sm:px-0">
+      {/* Scrolls sideways on mobile; wraps onto a second row on desktop.
+          It used to be overflow-visible and nowrap above the sm breakpoint,
+          which assumed the tabs always fit — once there were eight of them
+          they did not, and the whole page scrolled sideways at 1024px. */}
+      <nav className="flex flex-nowrap gap-1 overflow-x-auto px-3 sm:flex-wrap sm:overflow-visible sm:px-0">
         {TABS.map((t) => (
           <button
             key={t.key}
