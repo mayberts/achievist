@@ -7,6 +7,8 @@ app.milestones) while /api/milestones sums them in Python. These tests pin
 both to the same shared table so the two can't drift apart.
 """
 
+from datetime import datetime
+
 import httpx
 import pytest
 
@@ -83,23 +85,42 @@ class TestLeaderboardMilestonePoints:
         assert entry["milestone_points"] == milestones.total_points_for(150, 5)
         assert entry["milestone_points"] == 100 + (100 + 500)
 
-    async def test_left_out_of_achievist_points(self, db_conn, client):
-        """Achievist Points is defined as rarity-weighted per unlock; milestone
-        points must not quietly inflate it."""
-        user = await db.create_user(db_conn, "parent", auth.hash_password("parentpassword1"), is_admin=True)
+    @staticmethod
+    async def _one_unlock_one_mastered_game(db_conn, username="parent") -> None:
+        user = await db.create_user(db_conn, username, auth.hash_password("parentpassword1"), is_admin=True)
         account_id = await db.upsert_account(db_conn, user["id"], "steam", "111", {})
         game = await db.upsert_platform_game(db_conn, "steam", "g", "Game", None, 1)
         await db.upsert_user_game(db_conn, account_id, game, 0, 1, 1)
         a = await db.upsert_achievement(db_conn, game, "a0", "Only One", "", None, 10, None)
-        await db.upsert_user_achievement(db_conn, account_id, a, True, None)
+        # dated so it falls inside a "this week" window
+        await db.upsert_user_achievement(db_conn, account_id, a, True, datetime.now())
         await db_conn.commit()
+
+    async def test_folded_into_achievist_points(self, db_conn, client):
+        """The headline score counts landmarks as well as grinding, while the
+        breakdown stays visible in its own column."""
+        await self._one_unlock_one_mastered_game(db_conn)
 
         await client.post("/api/auth/login", json={"username": "parent", "password": "parentpassword1"})
         entry = (await client.get("/api/leaderboard")).json()["entries"][0]
 
-        # one unrated unlock = 15 Achievist Points, and mastering one game
-        # earns milestone points that must stay in their own column
+        # one unrated unlock is worth 15, and mastering a game clears the
+        # first mastered milestone
+        milestone = milestones.mastered_milestone_points(1)
+        assert entry["milestone_points"] == milestone
+        assert entry["achievist_points"] == 15 + milestone
+
+    async def test_left_out_of_a_windowed_score(self, db_conn, client):
+        """Milestones can't be attributed to a week, so a windowed score counts
+        only the unlocks earned in it — otherwise an all-time figure would
+        swamp the window and make it meaningless."""
+        await self._one_unlock_one_mastered_game(db_conn)
+
+        await client.post("/api/auth/login", json={"username": "parent", "password": "parentpassword1"})
+        entry = (await client.get("/api/leaderboard", params={"window": "week"})).json()["entries"][0]
+
         assert entry["achievist_points"] == 15
+        # still reported, just not added in
         assert entry["milestone_points"] == milestones.mastered_milestone_points(1)
 
     async def test_endpoint_and_leaderboard_agree(self, db_conn, client):
