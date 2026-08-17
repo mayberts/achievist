@@ -1444,6 +1444,82 @@ async def milestones(user: dict = Depends(require_user)):
     }
 
 
+# How many of the most-recently-played games to draw the chase list from —
+# keeps it actionable (games you're actually in the middle of) rather than
+# surfacing the rarest achievement in the whole library, which could be
+# sitting in something last touched years ago.
+_CHASE_RECENT_GAMES = 5
+# A game with a huge locked list (an achievement-farm title with thousands of
+# near-0%-rarity entries) would otherwise fill every slot on rarity alone, so
+# each game contributes at most this many.
+_CHASE_PER_GAME = 2
+_CHASE_TOTAL = 8
+
+
+@app.get("/api/chase-list")
+async def chase_list(user: dict = Depends(require_user)):
+    """
+    The rarest achievements still locked in whatever you've been playing.
+
+    This started life in the browser: fetch the recent games, then fetch every
+    achievement of each one and whittle them down client-side. That meant the
+    landing page downloaded a game's entire achievement list — hundreds of
+    kilobytes for a big title, and megabytes across a few of them — to show
+    eight rows. Ranking and capping in SQL returns only the rows displayed.
+    """
+    pool = await db.get_pool()
+    async with pool.connection() as conn:
+        rows = await _fetch(
+            conn,
+            """
+            WITH recent AS (
+                SELECT ug.platform_game_id,
+                       ug.linked_account_id,
+                       pg.name     AS game_name,
+                       pg.platform AS platform
+                FROM user_games ug
+                JOIN platform_games pg ON pg.id = ug.platform_game_id
+                JOIN linked_accounts la ON la.id = ug.linked_account_id AND la.user_id = %s
+                WHERE ug.last_played_at IS NOT NULL
+                  AND ug.total_achievements > 0
+                  AND ug.earned_achievements < ug.total_achievements
+                ORDER BY ug.last_played_at DESC, ug.platform_game_id
+                LIMIT %s
+            ),
+            ranked AS (
+                SELECT r.platform_game_id,
+                       r.game_name,
+                       r.platform,
+                       a.platform_ach_id,
+                       a.name,
+                       a.icon_url,
+                       a.rarity_pct,
+                       ROW_NUMBER() OVER (
+                           PARTITION BY r.platform_game_id
+                           ORDER BY a.rarity_pct ASC, a.id
+                       ) AS rn
+                FROM recent r
+                JOIN achievements a ON a.platform_game_id = r.platform_game_id
+                -- LEFT JOIN, not INNER: a platform can list an achievement the
+                -- user has no row for at all, which is as locked as it gets.
+                LEFT JOIN user_achievements ua
+                       ON ua.achievement_id = a.id
+                      AND ua.linked_account_id = r.linked_account_id
+                WHERE a.rarity_pct IS NOT NULL
+                  AND (ua.unlocked IS NULL OR ua.unlocked = FALSE)
+            )
+            SELECT platform_game_id, game_name, platform,
+                   platform_ach_id, name, icon_url, rarity_pct
+            FROM ranked
+            WHERE rn <= %s
+            ORDER BY rarity_pct ASC, platform_game_id
+            LIMIT %s
+            """,
+            user["id"], _CHASE_RECENT_GAMES, _CHASE_PER_GAME, _CHASE_TOTAL,
+        )
+    return [dict(r) for r in rows]
+
+
 @app.get("/api/activity")
 async def activity(user: dict = Depends(require_user)):
     """Unlock heatmap, streaks, total playtime, and a recent-activity feed."""

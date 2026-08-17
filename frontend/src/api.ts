@@ -2,6 +2,7 @@ import type {
   Account,
   Achievement,
   AchievementSearchResponse,
+  ChaseListItem,
   MilestonesResponse,
   Activity,
   AuthStatus,
@@ -192,6 +193,7 @@ export const api = {
     get<FamilyActivityResponse>(`/api/activity/family?since=${encodeURIComponent(since)}`),
 
   milestones: () => get<MilestonesResponse>("/api/milestones"),
+  chaseList: () => get<ChaseListItem[]>("/api/chase-list"),
 
   searchAchievements: (q: AchievementSearchQuery) => {
     const params = new URLSearchParams();

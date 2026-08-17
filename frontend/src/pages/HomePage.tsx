@@ -6,7 +6,7 @@ import { platformLabel } from "../lib/platforms";
 import { fmtDate, fmtRelative } from "../lib/format";
 import { RARITY_TIER_CLASS, rarityTier } from "../lib/rarity";
 import { milestoneTier } from "../lib/milestoneTier";
-import type { MilestoneTrack, MilestonesResponse } from "../types";
+import type { ChaseListItem, MilestoneTrack, MilestonesResponse } from "../types";
 
 /**
  * The forward-looking half of the app: what to play next, what's nearly done,
@@ -14,16 +14,6 @@ import type { MilestoneTrack, MilestonesResponse } from "../types";
  * the Statistics page, which turned out to be the wrong home for them —
  * Statistics is where you go to look back, not to decide what to do next.
  */
-
-interface ChaseItem {
-  platform_game_id: number;
-  platform_ach_id: string;
-  name: string | null;
-  icon_url: string | null;
-  rarity_pct: number;
-  game_name: string;
-  platform: string;
-}
 
 interface QuickWinItem {
   platform_game_id: number;
@@ -35,12 +25,6 @@ interface QuickWinItem {
   completion_pct: number;
   remaining: number;
 }
-
-// How many of the most-recently-played games to pull locked achievements
-// from — keeps the list actionable (games you're actually in the middle of)
-// rather than the rarest achievement in your entire library, which could be
-// sitting in something you last touched years ago.
-const CHASE_RECENT_GAMES = 5;
 
 // A milestone crossed within this many days still reads as "just happened",
 // and gets the celebratory treatment rather than being filed away as history.
@@ -176,7 +160,7 @@ function MilestoneTrackCard({
 export function HomePage() {
   const [milestones, setMilestones] = useState<MilestonesResponse | null>(null);
   const [quickWins, setQuickWins] = useState<QuickWinItem[]>([]);
-  const [chaseList, setChaseList] = useState<ChaseItem[]>([]);
+  const [chaseList, setChaseList] = useState<ChaseListItem[]>([]);
   const [hasAnyAccount, setHasAnyAccount] = useState<boolean | null>(null);
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
@@ -210,36 +194,7 @@ export function HomePage() {
       })
       .catch(() => setQuickWins([]));
 
-    const chase = api
-      .games({ sort: "recent", page_size: CHASE_RECENT_GAMES })
-      .then(async (r) => {
-        const recent = r.games.filter((g) => g.last_played_at && g.earned_achievements < g.total_achievements);
-        const perGame = await Promise.all(
-          recent.map(async (g) => {
-            const achievements = await api.gameAchievements(g.platform_game_id).catch(() => []);
-            // A game with a huge locked achievement list (e.g. an
-            // achievement-farm title with thousands of near-0%-rarity
-            // entries) would otherwise fill every slot on rarity alone —
-            // cap each game's contribution so the list actually spans your
-            // recently played games instead of just the spammiest one.
-            return achievements
-              .filter((a) => !a.unlocked && a.rarity_pct != null)
-              .sort((a, b) => (a.rarity_pct as number) - (b.rarity_pct as number))
-              .slice(0, 2)
-              .map((a) => ({
-                platform_game_id: g.platform_game_id,
-                platform_ach_id: a.platform_ach_id,
-                name: a.name,
-                icon_url: a.icon_url,
-                rarity_pct: a.rarity_pct as number,
-                game_name: g.name,
-                platform: g.platform,
-              }));
-          }),
-        );
-        setChaseList(perGame.flat().sort((a, b) => a.rarity_pct - b.rarity_pct).slice(0, 8));
-      })
-      .catch(() => setChaseList([]));
+    const chase = api.chaseList().then(setChaseList).catch(() => setChaseList([]));
 
     Promise.allSettled([accounts, milestonesReq, wins, chase]).finally(() => setLoading(false));
   }, []);
