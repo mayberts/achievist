@@ -9,6 +9,7 @@ import { Nav, type Tab } from "./components/Nav";
 import { SummaryBar } from "./components/SummaryBar";
 import { BackToTop } from "./components/BackToTop";
 import { useToast } from "./components/Toast";
+import { HomePage } from "./pages/HomePage";
 import { GamesPage } from "./pages/GamesPage";
 import { AchievementsPage } from "./pages/AchievementsPage";
 import { ActivityPage } from "./pages/ActivityPage";
@@ -24,7 +25,7 @@ const StatisticsPage = lazy(() =>
 );
 
 export default function App() {
-  const [tab, setTab] = useState<Tab>("games");
+  const [tab, setTab] = useState<Tab>("home");
   const [summary, setSummary] = useState<Summary | null>(null);
   const [progress, setProgress] = useState<SyncProgress | null>(null);
   const [accountErrors, setAccountErrors] = useState(0);
@@ -34,7 +35,7 @@ export default function App() {
   const { user, logout } = useAuth();
   const [searchParams] = useSearchParams();
 
-  // A cross-tab deep link (e.g. Statistics' "chase list" → Achievements,
+  // A cross-tab deep link (e.g. Home's "chase list" → Achievements,
   // pre-filtered) arrives as a ?tab= param on the catch-all route rather
   // than a real route, since tab switching is plain component state, not
   // routed. Only reads it on mount/navigation, never writes it back, so it
@@ -182,10 +183,13 @@ export default function App() {
             }}
             accountErrors={accountErrors}
           />
+          {/* shrink-0/nowrap: the tab bar is wide enough — and grew by a tab
+              when Home landed — that on a mid-width viewport flex would
+              otherwise squeeze this button until "Sync all" wrapped. */}
           <button
             onClick={syncAll}
             disabled={running}
-            className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white transition hover:bg-accent/90 disabled:opacity-60 sm:w-auto"
+            className="inline-flex w-full shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white transition hover:bg-accent/90 disabled:opacity-60 sm:w-auto"
           >
             <RefreshCw size={15} className={running ? "animate-spin" : ""} />
             {running ? "Syncing…" : "Sync all"}
@@ -211,6 +215,7 @@ export default function App() {
               path="*"
               element={
                 <>
+                  {tab === "home" && <HomePage />}
                   {tab === "games" && <GamesPage summary={summary} />}
                   {tab === "achievements" && <AchievementsPage />}
                   {tab === "activity" && <ActivityPage />}
