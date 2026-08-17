@@ -196,6 +196,16 @@ export interface AchievementSearchResult extends Achievement {
   game_icon_url: string | null;
 }
 
+export interface ChaseListItem {
+  platform_game_id: number;
+  platform_ach_id: string;
+  name: string | null;
+  icon_url: string | null;
+  rarity_pct: number;
+  game_name: string;
+  platform: string;
+}
+
 export interface MilestoneEntry {
   threshold: number;
   /** Badge tier from app/milestones.py: bronze | silver | gold | platinum | diamond. */
