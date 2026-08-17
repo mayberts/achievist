@@ -118,10 +118,23 @@ def pytest_terminal_summary(terminalreporter, exitstatus, config):
 async def db_conn():
     """A connection to a real, schema-applied, empty-between-tests test database."""
     config.DATABASE_URL = TEST_DATABASE_URL
-    db._pool = None  # force a fresh pool bound to the test DB
+    # A fresh pool per test, bound to this test's event loop — pytest-asyncio
+    # gives every test its own, and a pool does not survive its loop.
+    db._pool = None
     pool = await db.get_pool()
-    await db.apply_schema(pool)
-    async with pool.connection() as conn:
-        yield conn
-        for table in _APP_TABLES:
-            await conn.execute(f"TRUNCATE TABLE {table} RESTART IDENTITY CASCADE")
+    try:
+        await db.apply_schema(pool)
+        async with pool.connection() as conn:
+            yield conn
+            for table in _APP_TABLES:
+                await conn.execute(f"TRUNCATE TABLE {table} RESTART IDENTITY CASCADE")
+    finally:
+        # Closing here, while the loop this pool belongs to is still running,
+        # is the point. Left to garbage collection, each pool's worker tasks
+        # are collected after their loop has closed, which on Python 3.12
+        # surfaces as a wall of "RuntimeError: Event loop is closed"
+        # tracebacks — annotated as errors in CI even on a passing run, where
+        # they would bury a real one. Less visibly, every leaked pool also
+        # held a Postgres connection open for the rest of the session.
+        await pool.close()
+        db._pool = None
