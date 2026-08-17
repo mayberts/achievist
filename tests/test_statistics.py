@@ -157,7 +157,7 @@ class TestCompletionDistribution:
         await db_conn.commit()
 
         dist = (await client.get("/api/statistics")).json()["completion_dist"]
-        assert [d["bracket"] for d in dist] == ["0%", "1-25%", "25-50%", "50-75%", "75-99%", "100%"]
+        assert [d["bracket"] for d in dist] == ["0%", "1-25%", "26-50%", "51-75%", "76-99%", "100%"]
         assert {d["bracket"]: d["cnt"] for d in dist}["0%"] == 1
         assert sum(d["cnt"] for d in dist) == 1
 
@@ -170,7 +170,36 @@ class TestCompletionDistribution:
         await db_conn.commit()
 
         dist = {d["bracket"]: d["cnt"] for d in (await client.get("/api/statistics")).json()["completion_dist"]}
-        assert dist == {"0%": 1, "1-25%": 1, "25-50%": 1, "50-75%": 1, "75-99%": 1, "100%": 1}
+        assert dist == {"0%": 1, "1-25%": 1, "26-50%": 1, "51-75%": 1, "76-99%": 1, "100%": 1}
+
+    async def test_labels_are_true_of_fractional_percentages(self, db_conn, client):
+        """The bands are cut on the rounded percentage, so a game can never sit
+        under a label that excludes its own number."""
+        user_id = await _login(db_conn, client)
+        acct = await db.upsert_account(db_conn, user_id, "steam", "111", {})
+        # 25.4% and 25.6% straddle the 1-25 / 26-50 label boundary
+        await _seed_game(db_conn, acct, "low", earned=127, total=500)
+        await _seed_game(db_conn, acct, "high", earned=128, total=500)
+        await db_conn.commit()
+
+        dist = {d["bracket"]: d["cnt"] for d in (await client.get("/api/statistics")).json()["completion_dist"]}
+        assert dist["1-25%"] == 1
+        assert dist["26-50%"] == 1
+
+    async def test_outer_bands_stay_exact_rather_than_rounded(self, db_conn, client):
+        """0% must mean nothing earned and 100% must mean actually finished, so
+        neither may absorb a value that merely rounds to it."""
+        user_id = await _login(db_conn, client)
+        acct = await db.upsert_account(db_conn, user_id, "steam", "111", {})
+        await _seed_game(db_conn, acct, "barely", earned=2, total=500)    # 0.4% -> rounds to 0
+        await _seed_game(db_conn, acct, "almost", earned=498, total=500)  # 99.6% -> rounds to 100
+        await db_conn.commit()
+
+        dist = {d["bracket"]: d["cnt"] for d in (await client.get("/api/statistics")).json()["completion_dist"]}
+        assert dist["0%"] == 0, "0.4% is progress, not an untouched game"
+        assert dist["1-25%"] == 1
+        assert dist["100%"] == 0, "99.6% is not a finished game"
+        assert dist["76-99%"] == 1
 
 
 class TestPlatformTotals:
