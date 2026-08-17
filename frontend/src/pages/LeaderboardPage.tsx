@@ -10,12 +10,18 @@ import { platformLabel } from "../lib/platforms";
 
 const FAMILY_ACTIVITY_POLL_MS = 45_000;
 
-type LeaderboardSort = "achievist_points" | "achievements_unlocked" | "games_completed" | "games_played";
+type LeaderboardSort =
+  | "achievist_points"
+  | "milestone_points"
+  | "achievements_unlocked"
+  | "games_completed"
+  | "games_played";
 type LeaderboardWindow = "all" | "week" | "month";
 type SharedGamesSort = "gap" | "name" | "recent";
 
 const SORT_LABEL: Record<LeaderboardSort, string> = {
   achievist_points: "Achievist Points",
+  milestone_points: "Milestone Points",
   achievements_unlocked: "Achievements unlocked",
   games_completed: "Games completed",
   games_played: "Games played",
@@ -80,6 +86,7 @@ function RankBadge({ rank }: { rank: number }) {
 function Row({ entry, rank, highlight }: { entry: LeaderboardEntry; rank: number; highlight: LeaderboardSort }) {
   const headline: Record<LeaderboardSort, string> = {
     achievist_points: fmtNum(entry.achievist_points),
+    milestone_points: fmtNum(entry.milestone_points),
     achievements_unlocked: fmtNum(entry.achievements_unlocked),
     games_completed: fmtNum(entry.games_completed),
     games_played: fmtNum(entry.games_played),
@@ -108,12 +115,19 @@ function Row({ entry, rank, highlight }: { entry: LeaderboardEntry; rank: number
           <span className="inline-flex items-center gap-1">
             <CheckCircle2 size={12} /> {fmtNum(entry.games_completed)} completed
           </span>
+          <span className="inline-flex items-center gap-1">
+            <Medal size={12} /> {fmtNum(entry.milestone_points)} milestone pts
+          </span>
         </div>
       </div>
       <div className="flex-shrink-0 text-right">
         <div className="text-xl font-bold tabular-nums text-slate-100">{headline[highlight]}</div>
         <div className="text-[10px] uppercase tracking-wide text-faint">
-          {highlight === "achievist_points" ? "Achievist Pts" : SORT_LABEL[highlight]}
+          {highlight === "achievist_points"
+            ? "Achievist Pts"
+            : highlight === "milestone_points"
+              ? "Milestone Pts"
+              : SORT_LABEL[highlight]}
         </div>
       </div>
     </div>
@@ -301,8 +315,11 @@ export function LeaderboardPage() {
       <p className="mb-5 text-sm text-muted">
         Achievist Points weight each unlock by how rare it is (Legendary unlocks are worth far more
         than common ones), so it stays fair across platforms and games. Only family members who've
-        opted in to sharing are shown here — you always see your own row.
-        {lbWindow !== "all" && " Games played/completed always reflect all-time, even with a time window selected."}
+        opted in to sharing are shown here — you always see your own row. Milestone Points are a
+        separate award for passing landmarks (your 1,000th achievement, your 10th mastered game),
+        counted on their own rather than mixed into Achievist Points.
+        {lbWindow !== "all" &&
+          " Games played/completed and Milestone Points always reflect all-time, even with a time window selected."}
       </p>
 
       {!data ? (

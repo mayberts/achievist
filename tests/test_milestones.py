@@ -14,7 +14,7 @@ from datetime import datetime, timedelta
 import httpx
 import pytest
 
-from app import auth, db
+from app import auth, db, milestones as milestones_def
 from app.main import app
 from tests.conftest import requires_db
 
@@ -82,7 +82,11 @@ async def test_reports_distance_to_the_next_milestone(db_conn, client):
     await db_conn.commit()
 
     nxt = (await client.get("/api/milestones")).json()["achievements"]["next"]
-    assert nxt == {"threshold": 250, "current": 120, "remaining": 130}
+    assert nxt == {
+        "threshold": 250, "current": 120, "remaining": 130,
+        "tier": milestones_def.BRONZE,
+        "points": milestones_def.achievement_milestone_points(250),
+    }
 
 
 async def test_no_milestones_reached_yet(db_conn, client):
@@ -93,7 +97,11 @@ async def test_no_milestones_reached_yet(db_conn, client):
 
     ach = (await client.get("/api/milestones")).json()["achievements"]
     assert ach["reached"] == []
-    assert ach["next"] == {"threshold": 100, "current": 3, "remaining": 97}
+    assert ach["next"] == {
+        "threshold": 100, "current": 3, "remaining": 97,
+        "tier": milestones_def.BRONZE,
+        "points": milestones_def.achievement_milestone_points(100),
+    }
 
 
 async def test_milestone_still_counts_when_unlocks_have_no_timestamps(db_conn, client):
@@ -126,7 +134,11 @@ async def test_mastered_milestones_order_by_when_each_game_was_finished(db_conn,
     by_threshold = {m["threshold"]: m for m in mastered["reached"]}
     assert by_threshold[1]["game_name"] == "Done 0"
     assert by_threshold[5]["game_name"] == "Done 4"
-    assert mastered["next"] == {"threshold": 10, "current": 5, "remaining": 5}
+    assert mastered["next"] == {
+        "threshold": 10, "current": 5, "remaining": 5,
+        "tier": milestones_def.SILVER,
+        "points": milestones_def.mastered_milestone_points(10),
+    }
 
 
 async def test_milestones_are_scoped_to_the_logged_in_user(db_conn, client):
