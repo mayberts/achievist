@@ -1257,6 +1257,145 @@ async def statistics(user: dict = Depends(require_user)):
         raise
 
 
+_ACHIEVEMENT_MILESTONES = [100, 250, 500, 1000, 2500, 5000, 7500, 10000, 15000, 20000, 25000, 50000]
+_MASTERED_MILESTONES = [1, 5, 10, 25, 50, 100, 150, 200]
+
+
+@app.get("/api/milestones")
+async def milestones(user: dict = Depends(require_user)):
+    """
+    Round-number landmarks in a user's history — their 1000th achievement,
+    their 10th mastered game — plus how far off the next one is.
+
+    Which milestones count as reached is decided by the same totals the
+    Statistics tiles show (the platform-reported per-game counters), so the
+    two panels can't contradict each other. Naming the *specific* achievement
+    or game that crossed a milestone is a separate, best-effort lookup: it can
+    only order unlocks that carry a timestamp, and some platforms don't give
+    one. A milestone with no nameable crossing point is still reported as
+    reached, just without the detail — better a bare "1000 achievements" than
+    silently pretending it never happened.
+    """
+    pool = await db.get_pool()
+    async with pool.connection() as conn:
+        totals = await _fetchrow(
+            conn,
+            """
+            SELECT
+                COALESCE(SUM(ug.earned_achievements), 0)              AS unlocked,
+                COUNT(*) FILTER (WHERE ug.completion_pct >= 100)      AS mastered
+            FROM user_games ug
+            JOIN linked_accounts la ON la.id = ug.linked_account_id AND la.user_id = %s
+            WHERE ug.total_achievements > 0
+            """,
+            user["id"],
+        )
+        unlocked_total = int(totals["unlocked"] or 0)
+        mastered_total = int(totals["mastered"] or 0)
+
+        ach_reached = [m for m in _ACHIEVEMENT_MILESTONES if m <= unlocked_total]
+        mastered_reached = [m for m in _MASTERED_MILESTONES if m <= mastered_total]
+
+        ach_rows = []
+        if ach_reached:
+            ach_rows = await _fetch(
+                conn,
+                """
+                WITH ordered AS (
+                    SELECT ROW_NUMBER() OVER (ORDER BY ua.unlocked_at, ua.achievement_id) AS n,
+                           a.name        AS achievement_name,
+                           a.icon_url    AS icon_url,
+                           pg.name       AS game_name,
+                           pg.platform   AS platform,
+                           ua.unlocked_at
+                    FROM user_achievements ua
+                    JOIN achievements a ON a.id = ua.achievement_id
+                    JOIN platform_games pg ON pg.id = a.platform_game_id
+                    JOIN linked_accounts la ON la.id = ua.linked_account_id AND la.user_id = %s
+                    WHERE ua.unlocked = true AND ua.unlocked_at IS NOT NULL
+                )
+                SELECT * FROM ordered WHERE n = ANY(%s)
+                """,
+                user["id"], ach_reached,
+            )
+
+        mastered_rows = []
+        if mastered_reached:
+            mastered_rows = await _fetch(
+                conn,
+                """
+                WITH mastered AS (
+                    SELECT pg.id            AS platform_game_id,
+                           pg.name          AS game_name,
+                           pg.platform      AS platform,
+                           pg.icon_url      AS icon_url,
+                           MAX(ua.unlocked_at) AS reached_at
+                    FROM user_games ug
+                    JOIN platform_games pg ON pg.id = ug.platform_game_id
+                    JOIN linked_accounts la ON la.id = ug.linked_account_id AND la.user_id = %s
+                    JOIN achievements a ON a.platform_game_id = pg.id
+                    JOIN user_achievements ua
+                      ON ua.achievement_id = a.id
+                     AND ua.linked_account_id = ug.linked_account_id
+                    WHERE ug.completion_pct >= 100
+                      AND ug.total_achievements > 0
+                      AND ua.unlocked = true
+                      AND ua.unlocked_at IS NOT NULL
+                    GROUP BY pg.id, pg.name, pg.platform, pg.icon_url
+                ), ranked AS (
+                    -- A game is "mastered" as of its final unlock, so that
+                    -- timestamp is what orders one mastered game against the
+                    -- next; platform_game_id only breaks ties.
+                    SELECT ROW_NUMBER() OVER (ORDER BY reached_at, platform_game_id) AS n, *
+                    FROM mastered
+                )
+                SELECT * FROM ranked WHERE n = ANY(%s)
+                """,
+                user["id"], mastered_reached,
+            )
+
+    def _next(thresholds: list[int], current: int) -> dict | None:
+        upcoming = next((m for m in thresholds if m > current), None)
+        if upcoming is None:
+            return None
+        return {"threshold": upcoming, "current": current, "remaining": upcoming - current}
+
+    ach_detail = {int(r["n"]): r for r in ach_rows}
+    mastered_detail = {int(r["n"]): r for r in mastered_rows}
+
+    def _base(threshold: int, row: dict | None, date_field: str) -> dict:
+        """Common shape for both milestone kinds; `row` is None when the
+        crossing point couldn't be pinned to a specific timestamped unlock."""
+        reached_at = row[date_field] if row else None
+        return {
+            "threshold": threshold,
+            "reached_at": reached_at.isoformat() if reached_at else None,
+            "game_name": row["game_name"] if row else None,
+            "platform": row["platform"] if row else None,
+            "icon_url": row["icon_url"] if row else None,
+        }
+
+    def _achievement_entry(threshold: int) -> dict:
+        row = ach_detail.get(threshold)
+        entry = _base(threshold, row, "unlocked_at")
+        entry["achievement_name"] = row["achievement_name"] if row else None
+        return entry
+
+    def _mastered_entry(threshold: int) -> dict:
+        return _base(threshold, mastered_detail.get(threshold), "reached_at")
+
+    return {
+        "achievements": {
+            "reached": [_achievement_entry(m) for m in reversed(ach_reached)],
+            "next": _next(_ACHIEVEMENT_MILESTONES, unlocked_total),
+        },
+        "mastered": {
+            "reached": [_mastered_entry(m) for m in reversed(mastered_reached)],
+            "next": _next(_MASTERED_MILESTONES, mastered_total),
+        },
+    }
+
+
 @app.get("/api/activity")
 async def activity(user: dict = Depends(require_user)):
     """Unlock heatmap, streaks, total playtime, and a recent-activity feed."""
