@@ -164,13 +164,28 @@ npm run dev      # dev server with API proxy to :8000
 npm run build    # production build → app/webdist (what Docker serves)
 ```
 
+### Frontend tests
+
+```bash
+cd frontend
+npm test         # once
+npm run test:watch
+```
+
+Vitest with Testing Library, running against jsdom, so they need no browser and
+no database. They cover the formatting/rarity/platform helpers and component
+rendering — the empty states, milestone wording, and the panels on the Home
+page. Note the limit: jsdom has no real layout engine, so a purely visual
+regression (an element wrapping onto two lines, a colour that's hard to read)
+will pass here and still needs a look in a browser.
+
 ### Full stack locally
 
 ```bash
 docker compose up -d --build
 ```
 
-CI (`.github/workflows/test.yml`) runs the backend test suite and a frontend production build on every push and PR.
+CI (`.github/workflows/test.yml`) runs the backend suite against a Postgres service container, plus the frontend tests and a production build, on every push and PR.
 
 ## Version control and updates
 
