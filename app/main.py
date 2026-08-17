@@ -648,7 +648,10 @@ async def summary(user: dict = Depends(require_user)):
                      THEN ROUND(SUM(ug.earned_achievements)::numeric
                           / SUM(ug.total_achievements) * 100, 1)
                      ELSE 0 END                          AS overall_pct,
-                COUNT(*) FILTER (WHERE ug.completion_pct = 100) AS perfect_games
+                -- >= rather than = so rows written before completion_pct was
+                -- clamped (see db.upsert_user_game) still count; they only
+                -- self-heal on the game's next sync.
+                COUNT(*) FILTER (WHERE ug.completion_pct >= 100) AS perfect_games
             FROM user_games ug
             JOIN linked_accounts la ON la.id = ug.linked_account_id
             WHERE la.user_id = %s
@@ -1001,7 +1004,8 @@ async def statistics(user: dict = Depends(require_user)):
                     SUM(ug.earned_achievements)                                          AS unlocked,
                     SUM(ug.total_achievements - ug.earned_achievements)                  AS locked,
                     COUNT(*)                                                             AS games_total,
-                    COUNT(*) FILTER (WHERE ug.completion_pct = 100)                     AS mastered,
+                    -- see /api/summary's perfect_games: >= catches pre-clamp rows
+                    COUNT(*) FILTER (WHERE ug.completion_pct >= 100)                    AS mastered,
                     COUNT(*) FILTER (WHERE ug.completion_pct >= 80 AND ug.completion_pct < 100) AS finished,
                     ROUND(AVG(ug.completion_pct), 1)                                    AS avg_completion,
                     ROUND(SUM(ug.earned_achievements)::numeric
