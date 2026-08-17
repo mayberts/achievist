@@ -22,6 +22,7 @@ const SORTS = [
   { key: "completion", label: "Completion" },
   { key: "playtime", label: "Playtime" },
   { key: "name", label: "Name" },
+  { key: "fastest", label: "Fastest to 100%" },
 ];
 
 const COMPLETIONS = [
@@ -280,13 +281,23 @@ export function GamesPage({ summary }: { summary: Summary | null }) {
       ) : view === "grid" ? (
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
           {games.map((g) => (
-            <GameCard key={g.platform_game_id} game={g} onClick={() => openGame(g.platform_game_id)} />
+            <GameCard
+              key={g.platform_game_id}
+              game={g}
+              showRemaining={sort === "fastest"}
+              onClick={() => openGame(g.platform_game_id)}
+            />
           ))}
         </div>
       ) : (
         <div className="flex flex-col gap-1.5">
           {games.map((g) => (
-            <GameRow key={g.platform_game_id} game={g} onClick={() => openGame(g.platform_game_id)} />
+            <GameRow
+              key={g.platform_game_id}
+              game={g}
+              showRemaining={sort === "fastest"}
+              onClick={() => openGame(g.platform_game_id)}
+            />
           ))}
         </div>
       )}

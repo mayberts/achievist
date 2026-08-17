@@ -150,6 +150,9 @@ export interface Game {
   total_achievements: number;
   completion_pct: number;
   last_played_at: string | null;
+  // Estimated hours left to reach 100% (HLTB completionist time scaled by the
+  // fraction still unearned). Null when the game has no completionist figure.
+  hltb_remaining: number | null;
 }
 
 export interface GameDetail extends Game {

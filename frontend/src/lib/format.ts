@@ -7,6 +7,17 @@ export function fmtPlaytime(minutes: number | null | undefined): string | null {
   return `${h}h`;
 }
 
+/**
+ * Formats an hour count from How Long To Beat. Non-positive values mean "no
+ * figure available" rather than "zero hours" — the HLTB enrichment stores -1
+ * in hltb_main when a lookup found nothing — so those format as null.
+ */
+export function fmtHours(hours: number | null | undefined): string | null {
+  if (!hours || hours <= 0) return null;
+  // Drop a trailing ".0" so a flat three-hour figure reads "3h", not "3.0h".
+  return `${Number(hours.toFixed(1))}h`;
+}
+
 export function fmtDate(iso: string | null | undefined): string | null {
   if (!iso) return null;
   const d = new Date(iso);

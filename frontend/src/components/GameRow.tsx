@@ -1,17 +1,27 @@
-import { Trophy, Clock } from "lucide-react";
+import { Trophy, Clock, Hourglass } from "lucide-react";
 import type { Game } from "../types";
-import { fmtPlaytime, fmtDate } from "../lib/format";
+import { fmtPlaytime, fmtDate, fmtHours } from "../lib/format";
 import { PlatformBadge } from "./PlatformBadge";
 
 function banner(g: Game): string | null {
   return g.sgdb_cover_url || g.igdb_cover_url || g.icon_url || null;
 }
 
-export function GameRow({ game, onClick }: { game: Game; onClick?: () => void }) {
+export function GameRow({
+  game,
+  onClick,
+  showRemaining,
+}: {
+  game: Game;
+  onClick?: () => void;
+  // See GameCard: only shown when the list is ordered by time-to-100%.
+  showRemaining?: boolean;
+}) {
   const art = banner(game);
   const pct = Math.round(game.completion_pct ?? 0);
   const playtime = fmtPlaytime(game.playtime_minutes);
   const played = fmtDate(game.last_played_at);
+  const remaining = showRemaining ? fmtHours(game.hltb_remaining) : null;
 
   return (
     <button
@@ -42,6 +52,12 @@ export function GameRow({ game, onClick }: { game: Game; onClick?: () => void })
             </span>
           )}
           {played && <span className="hidden sm:inline text-faint">{played}</span>}
+          {remaining && (
+            <span className="inline-flex items-center gap-1 font-medium text-slate-300">
+              <Hourglass size={11} className="text-faint" />
+              ~{remaining} to 100%
+            </span>
+          )}
         </div>
       </div>
 
