@@ -1076,12 +1076,30 @@ async def statistics(user: dict = Depends(require_user)):
                 SELECT bracket, COUNT(*) AS cnt
                 FROM (
                     SELECT
+                        -- Bands are cut on the *rounded* percentage so every
+                        -- label is literally true of the games under it. The
+                        -- labels used to share their endpoints (25 was claimed
+                        -- by both of the first two), and since completion_pct
+                        -- carries one decimal place, whole-number labels only
+                        -- line up with the data once it is rounded: a game on
+                        -- 25.4 belongs under the first band, not the second.
+                        --
+                        -- The outer two bands deliberately stay on the raw
+                        -- value. Zero has to mean nothing earned at all, and
+                        -- 0.4 is progress even though it rounds down to it;
+                        -- likewise a hundred has to mean actually finished, and
+                        -- 99.6 is not, even though it rounds up to it.
+                        --
+                        -- (Note for editors: this whole string is passed
+                        -- through psycopg parameter interpolation, so a literal
+                        -- percent sign has to be doubled even inside a comment.
+                        -- Easier to write these in words.)
                         CASE
-                            WHEN ug.completion_pct = 0         THEN '0%%'
-                            WHEN ug.completion_pct <= 25       THEN '1-25%%'
-                            WHEN ug.completion_pct <= 50       THEN '25-50%%'
-                            WHEN ug.completion_pct <= 75       THEN '50-75%%'
-                            WHEN ug.completion_pct < 100       THEN '75-99%%'
+                            WHEN ug.completion_pct = 0                THEN '0%%'
+                            WHEN ROUND(ug.completion_pct) <= 25       THEN '1-25%%'
+                            WHEN ROUND(ug.completion_pct) <= 50       THEN '26-50%%'
+                            WHEN ROUND(ug.completion_pct) <= 75       THEN '51-75%%'
+                            WHEN ug.completion_pct < 100              THEN '76-99%%'
                             ELSE '100%%'
                         END AS bracket
                     FROM user_games ug
@@ -1225,7 +1243,7 @@ async def statistics(user: dict = Depends(require_user)):
             for r in on_this_day_rows
         ]
 
-        bracket_order = ["0%", "1-25%", "25-50%", "50-75%", "75-99%", "100%"]
+        bracket_order = ["0%", "1-25%", "26-50%", "51-75%", "76-99%", "100%"]
         dist_map = {r["bracket"]: r["cnt"] for r in completion_dist}
 
         return {
