@@ -195,6 +195,28 @@ export interface AchievementSearchResult extends Achievement {
   game_icon_url: string | null;
 }
 
+export interface MilestoneEntry {
+  threshold: number;
+  // Null when the crossing point couldn't be tied to a timestamped unlock —
+  // the milestone still counts, it just can't name what got you there.
+  reached_at: string | null;
+  achievement_name: string | null;
+  game_name: string | null;
+  platform: string | null;
+  icon_url: string | null;
+}
+
+export interface MilestoneTrack {
+  /** Reached milestones, highest first. */
+  reached: MilestoneEntry[];
+  next: { threshold: number; current: number; remaining: number } | null;
+}
+
+export interface MilestonesResponse {
+  achievements: MilestoneTrack;
+  mastered: MilestoneTrack;
+}
+
 export interface AchievementSearchResponse {
   total: number;
   page: number;

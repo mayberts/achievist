@@ -14,11 +14,13 @@ import {
 } from "recharts";
 import {
   Trophy, Lock, Gamepad2, Crown, CheckCircle2, Percent, Flame, CalendarDays, Sparkles, Target, Zap,
+  Medal,
 } from "lucide-react";
 import { api } from "../api";
 import { platformLabel } from "../lib/platforms";
-import { fmtDate } from "../lib/format";
+import { fmtDate, fmtRelative } from "../lib/format";
 import { RARITY_TIER_HEX, RARITY_TIER_CLASS, rarityTier } from "../lib/rarity";
+import type { MilestoneTrack, MilestonesResponse } from "../types";
 
 interface ChaseItem {
   platform_game_id: number;
@@ -101,6 +103,114 @@ function Tile({ icon, label, value }: { icon: React.ReactNode; label: string; va
   );
 }
 
+// A milestone crossed within this many days still reads as "just happened",
+// and gets the celebratory treatment rather than being filed away as history.
+const MILESTONE_FRESH_DAYS = 30;
+
+function daysSince(iso: string): number {
+  return (Date.now() - new Date(iso).getTime()) / 86_400_000;
+}
+
+function MilestoneTrackCard({
+  label,
+  unit,
+  icon,
+  track,
+}: {
+  label: string;
+  // Takes the count because the first milestone in both tracks can be 1
+  // ("1 game mastered", not "1 games mastered").
+  unit: (n: number) => string;
+  icon: React.ReactNode;
+  track: MilestoneTrack;
+}) {
+  const latest = track.reached[0] ?? null;
+  const older = track.reached.slice(1);
+  const fresh = !!latest?.reached_at && daysSince(latest.reached_at) <= MILESTONE_FRESH_DAYS;
+  const next = track.next;
+  // Progress runs from zero rather than from the last milestone: "1,240 of
+  // 2,500" is the number people actually track toward, and it keeps the bar
+  // comparable between the two cards.
+  const pct = next ? Math.min(100, (next.current / next.threshold) * 100) : 100;
+
+  return (
+    <div
+      className={`rounded-card border bg-ink-850 p-4 ${
+        fresh ? "border-accent/60 ring-1 ring-accent/25" : "border-line"
+      }`}
+    >
+      <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-faint">
+        {icon}
+        {label}
+      </div>
+
+      {latest ? (
+        <div className="mt-3 flex items-start gap-3">
+          {latest.icon_url ? (
+            <img src={latest.icon_url} alt="" className="h-10 w-10 shrink-0 rounded" />
+          ) : (
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded bg-ink-800">
+              <Trophy size={16} className="text-faint" />
+            </div>
+          )}
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2">
+              <span className="text-xl font-bold tabular-nums text-slate-100">
+                {latest.threshold.toLocaleString()}
+              </span>
+              <span className="text-sm text-muted">{unit(latest.threshold)}</span>
+              {fresh && (
+                <span className="rounded-md bg-accent/20 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-accent">
+                  New
+                </span>
+              )}
+            </div>
+            <div className="mt-0.5 truncate text-xs text-muted">
+              {latest.achievement_name
+                ? `${latest.achievement_name} · ${latest.game_name}`
+                : latest.game_name ?? "milestone passed"}
+            </div>
+            {latest.reached_at && (
+              <div className="mt-0.5 text-[11px] text-faint">
+                {fresh ? fmtRelative(latest.reached_at) : fmtDate(latest.reached_at)}
+              </div>
+            )}
+          </div>
+        </div>
+      ) : (
+        <div className="mt-3 text-sm text-muted">No milestones yet — the first one's in reach.</div>
+      )}
+
+      {next && (
+        <div className="mt-4">
+          <div className="mb-1 flex items-baseline justify-between text-xs">
+            <span className="text-muted">
+              Next: <span className="font-semibold text-slate-200">{next.threshold.toLocaleString()}</span>
+            </span>
+            <span className="tabular-nums text-faint">{next.remaining.toLocaleString()} to go</span>
+          </div>
+          <div className="h-2 overflow-hidden rounded-full bg-ink-700">
+            <div className="h-full rounded-full bg-accent-soft" style={{ width: `${pct}%` }} />
+          </div>
+        </div>
+      )}
+
+      {older.length > 0 && (
+        <div className="mt-3 flex flex-wrap gap-1.5">
+          {older.map((m) => (
+            <span
+              key={m.threshold}
+              className="rounded-md bg-ink-800 px-1.5 py-0.5 text-[10px] font-medium tabular-nums text-faint"
+            >
+              {m.threshold.toLocaleString()}
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Record({ label, value, sub }: { label: string; value: string; sub?: string }) {
   return (
     <div className="rounded-card border border-line bg-ink-850 p-4">
@@ -116,10 +226,12 @@ export function StatisticsPage() {
   const [year, setYear] = useState<number | "all">("all");
   const [chaseList, setChaseList] = useState<ChaseItem[] | null>(null);
   const [quickWins, setQuickWins] = useState<QuickWinItem[] | null>(null);
+  const [milestones, setMilestones] = useState<MilestonesResponse | null>(null);
   const navigate = useNavigate();
 
   useEffect(() => {
     fetch("/api/statistics").then((r) => r.json()).then(setStats).catch(() => setStats(null));
+    api.milestones().then(setMilestones).catch(() => setMilestones(null));
 
     api
       .games({ sort: "completion", completion: "in_progress", page_size: 200 })
@@ -199,6 +311,24 @@ export function StatisticsPage() {
         <Tile icon={<Percent size={15} />} label="Overall" value={`${g.absolute_completion ?? 0}%`} />
         <Tile icon={<Flame size={15} />} label="Best streak" value={`${num("best_streak_days")}d`} />
       </div>
+
+      {/* milestones */}
+      {milestones && (
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <MilestoneTrackCard
+            label="Achievement milestones"
+            unit={(n) => (n === 1 ? "achievement" : "achievements")}
+            icon={<Medal size={13} />}
+            track={milestones.achievements}
+          />
+          <MilestoneTrackCard
+            label="Mastered-game milestones"
+            unit={(n) => (n === 1 ? "game mastered" : "games mastered")}
+            icon={<Crown size={13} />}
+            track={milestones.mastered}
+          />
+        </div>
+      )}
 
       {/* quick wins */}
       {quickWins && quickWins.length > 0 && (
