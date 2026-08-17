@@ -22,6 +22,7 @@ export interface LeaderboardEntry {
   display_name: string | null;
   avatar_url: string | null;
   achievist_points: number;
+  milestone_points: number;
   achievements_unlocked: number;
   games_played: number;
   games_completed: number;
@@ -197,6 +198,10 @@ export interface AchievementSearchResult extends Achievement {
 
 export interface MilestoneEntry {
   threshold: number;
+  /** Badge tier from app/milestones.py: bronze | silver | gold | platinum | diamond. */
+  tier: string;
+  /** What passing this milestone is worth on the leaderboard. */
+  points: number;
   // Null when the crossing point couldn't be tied to a timestamped unlock —
   // the milestone still counts, it just can't name what got you there.
   reached_at: string | null;
@@ -209,7 +214,9 @@ export interface MilestoneEntry {
 export interface MilestoneTrack {
   /** Reached milestones, highest first. */
   reached: MilestoneEntry[];
-  next: { threshold: number; current: number; remaining: number } | null;
+  next: { threshold: number; current: number; remaining: number; tier: string; points: number } | null;
+  /** Points from every milestone passed on this track. */
+  points_earned: number;
 }
 
 export interface MilestonesResponse {

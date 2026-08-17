@@ -5,6 +5,7 @@ import { api } from "../api";
 import { platformLabel } from "../lib/platforms";
 import { fmtDate, fmtRelative } from "../lib/format";
 import { RARITY_TIER_CLASS, rarityTier } from "../lib/rarity";
+import { milestoneTier } from "../lib/milestoneTier";
 import type { MilestoneTrack, MilestonesResponse } from "../types";
 
 /**
@@ -64,6 +65,7 @@ function MilestoneTrackCard({
 }) {
   const latest = track.reached[0] ?? null;
   const older = track.reached.slice(1);
+  const badge = milestoneTier(latest?.tier);
   const fresh = !!latest?.reached_at && daysSince(latest.reached_at) <= MILESTONE_FRESH_DAYS;
   const next = track.next;
   // Progress runs from zero rather than from the last milestone: "1,240 of
@@ -77,9 +79,16 @@ function MilestoneTrackCard({
         fresh ? "border-accent/60 ring-1 ring-accent/25" : "border-line"
       }`}
     >
-      <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-faint">
-        {icon}
-        {label}
+      <div className="flex items-center justify-between gap-2 text-xs uppercase tracking-wide text-faint">
+        <span className="flex items-center gap-2">
+          {icon}
+          {label}
+        </span>
+        {track.points_earned > 0 && (
+          <span className="tabular-nums normal-case tracking-normal">
+            {track.points_earned.toLocaleString()} pts
+          </span>
+        )}
       </div>
 
       {latest ? (
@@ -97,6 +106,11 @@ function MilestoneTrackCard({
                 {latest.threshold.toLocaleString()}
               </span>
               <span className="text-sm text-muted">{unit(latest.threshold)}</span>
+              <span
+                className={`rounded-md border px-1.5 py-0.5 text-[10px] font-semibold uppercase ${badge.pill} ${badge.text}`}
+              >
+                {badge.label}
+              </span>
               {fresh && (
                 <span className="rounded-md bg-accent/20 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-accent">
                   New
@@ -107,6 +121,9 @@ function MilestoneTrackCard({
               {latest.achievement_name
                 ? `${latest.achievement_name} · ${latest.game_name}`
                 : latest.game_name ?? "milestone passed"}
+            </div>
+            <div className={`mt-0.5 text-[11px] font-semibold tabular-nums ${badge.text}`}>
+              +{latest.points.toLocaleString()} pts
             </div>
             {latest.reached_at && (
               <div className="mt-0.5 text-[11px] text-faint">
@@ -124,6 +141,9 @@ function MilestoneTrackCard({
           <div className="mb-1 flex items-baseline justify-between text-xs">
             <span className="text-muted">
               Next: <span className="font-semibold text-slate-200">{next.threshold.toLocaleString()}</span>
+              <span className={`ml-1.5 font-medium ${milestoneTier(next.tier).text}`}>
+                {milestoneTier(next.tier).label} · +{next.points.toLocaleString()}
+              </span>
             </span>
             <span className="tabular-nums text-faint">{next.remaining.toLocaleString()} to go</span>
           </div>
@@ -135,14 +155,18 @@ function MilestoneTrackCard({
 
       {older.length > 0 && (
         <div className="mt-3 flex flex-wrap gap-1.5">
-          {older.map((m) => (
-            <span
-              key={m.threshold}
-              className="rounded-md bg-ink-800 px-1.5 py-0.5 text-[10px] font-medium tabular-nums text-faint"
-            >
-              {m.threshold.toLocaleString()}
-            </span>
-          ))}
+          {older.map((m) => {
+            const t = milestoneTier(m.tier);
+            return (
+              <span
+                key={m.threshold}
+                title={`${t.label} · +${m.points.toLocaleString()} pts`}
+                className={`rounded-md border px-1.5 py-0.5 text-[10px] font-medium tabular-nums ${t.pill} ${t.text}`}
+              >
+                {m.threshold.toLocaleString()}
+              </span>
+            );
+          })}
         </div>
       )}
     </div>

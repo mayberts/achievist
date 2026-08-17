@@ -12,7 +12,7 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from app import auth, backup, config, db, hltb as hltb_names
+from app import auth, backup, config, db, hltb as hltb_names, milestones as milestones_def
 from app.db import _fetch, _fetchrow
 from app.platforms import PLATFORMS
 from app.platforms import trueachievements
@@ -1261,8 +1261,10 @@ async def statistics(user: dict = Depends(require_user)):
         raise
 
 
-_ACHIEVEMENT_MILESTONES = [100, 250, 500, 1000, 2500, 5000, 7500, 10000, 15000, 20000, 25000, 50000]
-_MASTERED_MILESTONES = [1, 5, 10, 25, 50, 100, 150, 200]
+_ACHIEVEMENT_TIERS = dict(milestones_def.ACHIEVEMENT_MILESTONES)
+_MASTERED_TIERS = dict(milestones_def.MASTERED_MILESTONES)
+_ACHIEVEMENT_MILESTONES = [t for t, _ in milestones_def.ACHIEVEMENT_MILESTONES]
+_MASTERED_MILESTONES = [t for t, _ in milestones_def.MASTERED_MILESTONES]
 
 
 @app.get("/api/milestones")
@@ -1358,21 +1360,29 @@ async def milestones(user: dict = Depends(require_user)):
                 user["id"], mastered_reached,
             )
 
-    def _next(thresholds: list[int], current: int) -> dict | None:
+    def _next(thresholds: list[int], current: int, tiers: dict[int, str], points) -> dict | None:
         upcoming = next((m for m in thresholds if m > current), None)
         if upcoming is None:
             return None
-        return {"threshold": upcoming, "current": current, "remaining": upcoming - current}
+        return {
+            "threshold": upcoming,
+            "current": current,
+            "remaining": upcoming - current,
+            "tier": tiers[upcoming],
+            "points": points(upcoming),
+        }
 
     ach_detail = {int(r["n"]): r for r in ach_rows}
     mastered_detail = {int(r["n"]): r for r in mastered_rows}
 
-    def _base(threshold: int, row: dict | None, date_field: str) -> dict:
+    def _base(threshold: int, row: dict | None, date_field: str, tier: str, points: int) -> dict:
         """Common shape for both milestone kinds; `row` is None when the
         crossing point couldn't be pinned to a specific timestamped unlock."""
         reached_at = row[date_field] if row else None
         return {
             "threshold": threshold,
+            "tier": tier,
+            "points": points,
             "reached_at": reached_at.isoformat() if reached_at else None,
             "game_name": row["game_name"] if row else None,
             "platform": row["platform"] if row else None,
@@ -1381,21 +1391,37 @@ async def milestones(user: dict = Depends(require_user)):
 
     def _achievement_entry(threshold: int) -> dict:
         row = ach_detail.get(threshold)
-        entry = _base(threshold, row, "unlocked_at")
+        entry = _base(
+            threshold, row, "unlocked_at", _ACHIEVEMENT_TIERS[threshold],
+            milestones_def.achievement_milestone_points(threshold),
+        )
         entry["achievement_name"] = row["achievement_name"] if row else None
         return entry
 
     def _mastered_entry(threshold: int) -> dict:
-        return _base(threshold, mastered_detail.get(threshold), "reached_at")
+        return _base(
+            threshold, mastered_detail.get(threshold), "reached_at",
+            _MASTERED_TIERS[threshold], milestones_def.mastered_milestone_points(threshold),
+        )
 
+    achievements = [_achievement_entry(m) for m in reversed(ach_reached)]
+    mastered = [_mastered_entry(m) for m in reversed(mastered_reached)]
     return {
         "achievements": {
-            "reached": [_achievement_entry(m) for m in reversed(ach_reached)],
-            "next": _next(_ACHIEVEMENT_MILESTONES, unlocked_total),
+            "reached": achievements,
+            "next": _next(
+                _ACHIEVEMENT_MILESTONES, unlocked_total, _ACHIEVEMENT_TIERS,
+                milestones_def.achievement_milestone_points,
+            ),
+            "points_earned": sum(m["points"] for m in achievements),
         },
         "mastered": {
-            "reached": [_mastered_entry(m) for m in reversed(mastered_reached)],
-            "next": _next(_MASTERED_MILESTONES, mastered_total),
+            "reached": mastered,
+            "next": _next(
+                _MASTERED_MILESTONES, mastered_total, _MASTERED_TIERS,
+                milestones_def.mastered_milestone_points,
+            ),
+            "points_earned": sum(m["points"] for m in mastered),
         },
     }
 

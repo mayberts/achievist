@@ -5,7 +5,7 @@ from psycopg_pool import AsyncConnectionPool
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
-from app import config
+from app import config, milestones
 
 _pool: AsyncConnectionPool | None = None
 
@@ -132,6 +132,10 @@ async def delete_user(conn, user_id: int) -> None:
     await conn.execute("DELETE FROM users WHERE id = %s", (user_id,))
 
 
+_ACH_MILESTONE_VALUES = milestones.sql_points_values(milestones.achievement_point_pairs())
+_MASTERED_MILESTONE_VALUES = milestones.sql_points_values(milestones.mastered_point_pairs())
+
+
 # Points-per-rarity-tier for "Achievist Points" — a platform-agnostic score
 # so the leaderboard isn't just whoever plays the platform with the
 # biggest native point scale (Gamerscore vs. RA points vs. none at all for
@@ -144,15 +148,21 @@ async def get_leaderboard(
     users.share_stats — plus the requesting user themself even if they
     haven't opted in, so they can always see their own row.
 
-    `platform` scopes every stat (points, unlocked, games played/completed)
-    to that one platform. `since` scopes achievements_unlocked/
-    achievist_points to unlocks on or after that timestamp (a "this week /
-    this month" view) — games_played/games_completed stay all-time even
-    then, since user_games has no per-unlock timestamp to window by.
+    `platform` scopes every stat (points, unlocked, games played/completed,
+    milestone points) to that one platform. `since` scopes
+    achievements_unlocked/achievist_points to unlocks on or after that
+    timestamp (a "this week / this month" view) — games_played,
+    games_completed and milestone_points stay all-time even then, since
+    user_games has no per-unlock timestamp to window by.
+
+    milestone_points is deliberately its own column rather than folded into
+    achievist_points: that score is defined as rarity-weighted per unlock
+    (and described that way in the UI), so mixing a different kind of award
+    into it would make the number unexplainable.
     """
     return await _fetch(
         conn,
-        """
+        f"""
         WITH ach_stats AS (
             SELECT
                 la.user_id,
@@ -182,7 +192,10 @@ async def get_leaderboard(
                 COUNT(DISTINCT ug.platform_game_id) AS games_played,
                 COUNT(DISTINCT ug.platform_game_id) FILTER (
                     WHERE ug.total_achievements > 0 AND ug.completion_pct >= 100
-                ) AS games_completed
+                ) AS games_completed,
+                COALESCE(SUM(ug.earned_achievements) FILTER (
+                    WHERE ug.total_achievements > 0
+                ), 0) AS total_earned
             FROM user_games ug
             JOIN linked_accounts la ON la.id = ug.linked_account_id
             JOIN platform_games pg ON pg.id = ug.platform_game_id
@@ -197,7 +210,21 @@ async def get_leaderboard(
             COALESCE(ach.achievist_points, 0) AS achievist_points,
             COALESCE(ach.achievements_unlocked, 0) AS achievements_unlocked,
             COALESCE(g.games_played, 0) AS games_played,
-            COALESCE(g.games_completed, 0) AS games_completed
+            COALESCE(g.games_completed, 0) AS games_completed,
+            -- Points from every milestone this user has passed. Derived from
+            -- their current totals rather than from unlock history, so it
+            -- needs no per-milestone timestamps here; that also means it is
+            -- always all-time, like games_played/games_completed and for the
+            -- same reason.
+            COALESCE((
+                SELECT SUM(m.points)
+                FROM (VALUES {_ACH_MILESTONE_VALUES}) AS m(threshold, points)
+                WHERE m.threshold <= COALESCE(g.total_earned, 0)
+            ), 0) + COALESCE((
+                SELECT SUM(m.points)
+                FROM (VALUES {_MASTERED_MILESTONE_VALUES}) AS m(threshold, points)
+                WHERE m.threshold <= COALESCE(g.games_completed, 0)
+            ), 0) AS milestone_points
         FROM users u
         LEFT JOIN ach_stats ach ON ach.user_id = u.id
         LEFT JOIN game_stats g ON g.user_id = u.id
