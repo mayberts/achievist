@@ -146,14 +146,25 @@ pip install -r requirements-dev.txt
 pytest
 ```
 
-Most tests cover pure parsing/auth helpers, the platform-registry contract, and API routes that don't touch the database — they run with no setup. A smaller set of integration tests (account dedup, achievement-unlock detection, schema migrations) needs a real Postgres connection; those skip automatically if none is reachable. To run them locally, point `TEST_DATABASE_URL` at a throwaway database:
+**Most of the suite needs a database.** Pure parsing/auth helpers, the
+platform-registry contract and a few DB-free API routes run with no setup, but
+everything else — account dedup, unlock detection, schema migrations, and every
+hand-written query behind the statistics, leaderboard, milestone and chase-list
+endpoints — needs a real Postgres. Point `TEST_DATABASE_URL` at a throwaway
+database to run the lot:
 
 ```bash
 createdb pantheon_test   # or: docker run --rm -d -e POSTGRES_PASSWORD=postgres -p 5432:5432 postgres:16-alpine
 TEST_DATABASE_URL=postgresql://postgres:postgres@localhost:5432/pantheon_test pytest
 ```
 
-CI runs these against a Postgres service container automatically.
+Without one, those tests skip and the run ends with a banner saying how many
+did not run — a bare `pytest` still works, it just isn't a full pass, and says
+so rather than printing a green total that looks like one.
+
+Set `REQUIRE_DB_TESTS=1` to turn a missing database into an error instead of a
+skip. CI sets it, so a Postgres service container that fails to start fails the
+build rather than quietly reducing it to the DB-free tests.
 
 ### Frontend
 

@@ -24,6 +24,10 @@ jobs:
           --health-retries 5
     env:
       TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/pantheon_test
+      # Fail rather than skip if the service container above didn't come up.
+      # Without this a broken Postgres would silently reduce the job to the
+      # DB-free tests and still report success.
+      REQUIRE_DB_TESTS: "1"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
