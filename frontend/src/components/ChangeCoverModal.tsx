@@ -3,6 +3,7 @@ import { X, Search, ImageOff } from "lucide-react";
 import { api } from "../api";
 import type { SgdbSearchResult } from "../types";
 import { useToast } from "./Toast";
+import { useModal } from "../lib/useModal";
 
 export function ChangeCoverModal({
   gameId,
@@ -21,6 +22,7 @@ export function ChangeCoverModal({
   const [applying, setApplying] = useState<string | null>(null);
   const toast = useToast();
   const debounceRef = useRef<number>();
+  const { titleId, dialogProps } = useModal(onClose);
 
   function runSearch(q: string) {
     if (!q.trim()) {
@@ -100,12 +102,17 @@ export function ChangeCoverModal({
       }}
     >
       <div
+        {...dialogProps}
         className="my-8 w-full max-w-2xl rounded-card border border-line bg-ink-850 shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between border-b border-line p-4">
-          <h2 className="text-base font-semibold text-slate-100">Change Cover</h2>
-          <button onClick={onClose} className="rounded-lg p-1.5 text-muted transition hover:bg-ink-800 hover:text-slate-200">
+          <h2 id={titleId} className="text-base font-semibold text-slate-100">Change Cover</h2>
+          <button
+            onClick={onClose}
+            aria-label="Close cover picker"
+            className="rounded-lg p-1.5 text-muted transition hover:bg-ink-800 hover:text-slate-200"
+          >
             <X size={18} />
           </button>
         </div>

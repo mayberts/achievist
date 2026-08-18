@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { X } from "lucide-react";
 import type { Account, PlatformSchema } from "../types";
 import { api } from "../api";
+import { useModal } from "../lib/useModal";
 
 export function ConnectModal({
   schema,
@@ -15,17 +16,19 @@ export function ConnectModal({
   onConnected: () => void;
 }) {
   const editing = !!account;
+  const { titleId, dialogProps } = useModal(onClose);
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={onClose}>
       <div
+        {...dialogProps}
         className="w-full max-w-md rounded-card border border-line bg-ink-850 p-5 shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-slate-100">
+          <h2 id={titleId} className="text-lg font-semibold text-slate-100">
             {editing ? "Edit" : "Connect"} {schema.label}
           </h2>
-          <button onClick={onClose} className="text-muted hover:text-slate-200">
+          <button onClick={onClose} aria-label="Close" className="text-muted hover:text-slate-200">
             <X size={18} />
           </button>
         </div>
@@ -84,12 +87,15 @@ function FormFlow({
     <div className="space-y-3">
       {schema.fields.map((f) => (
         <div key={f.name}>
-          <label className="mb-1 block text-sm font-medium text-slate-300">
+          {/* The id ties the label to whichever control renders below, so a
+              screen reader announces "Steam ID" rather than "edit text". */}
+          <label htmlFor={`connect-${schema.key}-${f.name}`} className="mb-1 block text-sm font-medium text-slate-300">
             {f.label}
             {f.required && <span className="text-warn"> *</span>}
           </label>
           {f.type === "select" ? (
             <select
+              id={`connect-${schema.key}-${f.name}`}
               value={values[f.name] ?? f.options?.[0] ?? ""}
               onChange={(e) => setValues((v) => ({ ...v, [f.name]: e.target.value }))}
               className="w-full rounded-lg border border-line bg-ink-900 px-3 py-2 text-sm text-slate-100 outline-none focus:border-accent-soft"
@@ -100,6 +106,7 @@ function FormFlow({
             </select>
           ) : (
             <input
+              id={`connect-${schema.key}-${f.name}`}
               type={f.type === "password" ? "password" : "text"}
               value={values[f.name] ?? ""}
               placeholder={account && f.secret ? "Leave blank to keep current" : undefined}
@@ -200,8 +207,9 @@ function PSNServiceLogin({ onSignedIn }: { onSignedIn: () => void }) {
         <li>Copy the value of <span className="text-slate-300">"npsso"</span> from the JSON</li>
       </ol>
       <div>
-        <label className="mb-1 block text-sm font-medium text-slate-300">npsso Token</label>
+        <label htmlFor="npsso-token" className="mb-1 block text-sm font-medium text-slate-300">npsso Token</label>
         <input
+          id="npsso-token"
           value={npsso}
           onChange={(e) => setNpsso(e.target.value)}
           className="w-full rounded-lg border border-line bg-ink-900 px-3 py-2 text-xs text-slate-100 outline-none focus:border-accent-soft"

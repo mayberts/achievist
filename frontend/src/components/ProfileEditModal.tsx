@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { FileJson, X } from "lucide-react";
 import { api } from "../api";
+import { useModal } from "../lib/useModal";
 import type { Profile } from "../types";
 import { useToast } from "./Toast";
 
@@ -19,6 +20,7 @@ export function ProfileEditModal({
   const [shareStats, setShareStats] = useState(profile.share_stats);
   const [saving, setSaving] = useState(false);
   const toast = useToast();
+  const { titleId, dialogProps } = useModal(onClose);
 
   async function save() {
     setSaving(true);
@@ -48,20 +50,26 @@ export function ProfileEditModal({
       }}
     >
       <div
+        {...dialogProps}
         className="flex max-h-[90vh] w-full max-w-sm flex-col overflow-y-auto rounded-card border border-line bg-ink-850 shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between border-b border-line p-4">
-          <h2 className="text-base font-semibold text-slate-100">Edit Profile</h2>
-          <button onClick={onClose} className="rounded-lg p-1.5 text-muted transition hover:bg-ink-800 hover:text-slate-200">
+          <h2 id={titleId} className="text-base font-semibold text-slate-100">Edit Profile</h2>
+          <button
+            onClick={onClose}
+            aria-label="Close profile editor"
+            className="rounded-lg p-1.5 text-muted transition hover:bg-ink-800 hover:text-slate-200"
+          >
             <X size={18} />
           </button>
         </div>
 
         <div className="space-y-4 p-4">
           <div>
-            <label className="mb-1 block text-xs font-medium text-muted">Display name</label>
+            <label htmlFor="profile-display-name" className="mb-1 block text-xs font-medium text-muted">Display name</label>
             <input
+              id="profile-display-name"
               value={displayName}
               onChange={(e) => setDisplayName(e.target.value)}
               placeholder="Player"
@@ -69,8 +77,9 @@ export function ProfileEditModal({
             />
           </div>
           <div>
-            <label className="mb-1 block text-xs font-medium text-muted">Avatar URL</label>
+            <label htmlFor="profile-avatar-url" className="mb-1 block text-xs font-medium text-muted">Avatar URL</label>
             <input
+              id="profile-avatar-url"
               value={avatarUrl}
               onChange={(e) => setAvatarUrl(e.target.value)}
               placeholder="https://…"
@@ -87,8 +96,9 @@ export function ProfileEditModal({
             )}
           </div>
           <div>
-            <label className="mb-1 block text-xs font-medium text-muted">Background image URL</label>
+            <label htmlFor="profile-background-url" className="mb-1 block text-xs font-medium text-muted">Background image URL</label>
             <input
+              id="profile-background-url"
               value={backgroundUrl}
               onChange={(e) => setBackgroundUrl(e.target.value)}
               placeholder="https://…"

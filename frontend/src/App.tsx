@@ -157,6 +157,11 @@ export default function App() {
 
   return (
     <div className="min-h-screen">
+      {/* Invisible until focused. Without it the first Tab on every page
+          walks the header and all eight nav tabs before reaching content. */}
+      <a href="#main" className="skip-link">
+        Skip to content
+      </a>
       <AppBackground />
       <div className="mx-auto max-w-6xl px-3 py-4 sm:px-4 sm:py-6">
         <div className="mb-4 flex items-center justify-between gap-2">
@@ -214,7 +219,7 @@ export default function App() {
           </div>
         )}
 
-        <div className="mt-6">
+        <main id="main" tabIndex={-1} className="mt-6">
           <Routes>
             <Route path="/games/:id" element={<GameDetailPage />} />
             <Route path="/leaderboard/games/:id" element={<GameComparePage />} />
@@ -238,7 +243,7 @@ export default function App() {
               }
             />
           </Routes>
-        </div>
+        </main>
       </div>
       <BackToTop />
     </div>

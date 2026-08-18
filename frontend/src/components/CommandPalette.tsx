@@ -83,6 +83,8 @@ export function CommandPalette() {
   const [active, setActive] = useState(0);
   const navigate = useNavigate();
   const inputRef = useRef<HTMLInputElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const hasOpened = useRef(false);
   // Bumped per keystroke so a slow early request can't overwrite the results
   // of a later, more specific one.
   const seq = useRef(0);
@@ -102,11 +104,21 @@ export function CommandPalette() {
   }, []);
 
   useEffect(() => {
-    if (open) inputRef.current?.focus();
-    else {
+    if (open) {
+      hasOpened.current = true;
+      inputRef.current?.focus();
+    } else {
       setQ("");
       setResults([]);
       setActive(0);
+      // Hand focus back to the trigger rather than dropping it on <body>,
+      // which would send the next Tab to the top of the page.
+      //
+      // Only once it has actually been opened. This effect also runs on
+      // mount, where `open` is already false — restoring unconditionally
+      // grabbed focus on every page load, so the first Tab landed past the
+      // skip link and the browser test caught it.
+      if (hasOpened.current) triggerRef.current?.focus();
     }
   }, [open]);
 
@@ -159,6 +171,7 @@ export function CommandPalette() {
   return (
     <>
       <button
+        ref={triggerRef}
         onClick={() => setOpen(true)}
         aria-label="Search games and achievements"
         className="inline-flex items-center gap-2 rounded-lg border border-line/40 bg-ink-900/40 px-2.5 py-1.5 text-xs font-medium text-muted backdrop-blur-sm transition hover:bg-ink-800/60 hover:text-slate-200"

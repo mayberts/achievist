@@ -27,3 +27,46 @@
     background: transparent;
   }
 }
+
+/*
+ * Keyboard focus.
+ *
+ * Deliberately unlayered and at the end of the file so it beats Tailwind's
+ * `outline-none` utility, which appears on every input in the app. That
+ * utility removes the browser's focus ring and nothing replaced it, so
+ * anyone navigating by keyboard had no way to see where they were.
+ *
+ * :focus-visible rather than :focus, so a mouse click on a button does not
+ * leave a ring behind — the browser decides when the ring is warranted.
+ */
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid #5b8cff; /* accent.DEFAULT */
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+/*
+ * Visible only once focused: the first Tab on any page offers a jump past
+ * the header and the eight-tab nav, straight to the panel you came for.
+ */
+.skip-link {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  z-index: 200;
+}
+.skip-link:focus {
+  left: 0.75rem;
+  top: 0.75rem;
+  padding: 0.5rem 0.875rem;
+  border-radius: 0.5rem;
+  background: #5b8cff;
+  color: #fff;
+  font-size: 0.875rem;
+  font-weight: 600;
+}

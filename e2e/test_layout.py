@@ -122,6 +122,33 @@ async def test_manifest_is_linked_and_actually_reachable(page):
         assert icon_resp.headers.get("content-type", "").startswith("image/")
 
 
+async def test_keyboard_focus_is_actually_visible(page):
+    """Every input in the app carries Tailwind's `outline-none`, and nothing
+    replaced the ring it removes. Whether an outline is painted is a computed
+    style in a real engine — jsdom has no opinion on it at all."""
+    await page.keyboard.press("Tab")
+
+    outline = await page.evaluate(
+        """() => {
+            const el = document.activeElement;
+            if (!el || el === document.body) return null;
+            const s = getComputedStyle(el);
+            return { width: s.outlineWidth, style: s.outlineStyle, color: s.outlineColor };
+        }"""
+    )
+    assert outline, "nothing took focus on the first Tab"
+    assert outline["style"] != "none", "the focused element has no outline style"
+    assert outline["width"] not in ("0px", ""), "the focus outline has no width"
+    # `outline-none` paints a transparent ring; a real one must be opaque.
+    assert "rgba(0, 0, 0, 0)" not in outline["color"], "the focus outline is transparent"
+
+
+async def test_first_tab_offers_a_skip_link(page):
+    await page.keyboard.press("Tab")
+    text = (await page.evaluate("() => document.activeElement?.textContent || ''")).strip()
+    assert text == "Skip to content", f"first tab stop was {text!r}, not the skip link"
+
+
 async def test_home_panels_render_with_real_size(page):
     """A collapsed or zero-height card looks fine to jsdom and broken in a
     browser, so assert each panel actually occupies space."""

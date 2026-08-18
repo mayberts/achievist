@@ -51,8 +51,11 @@ export function LoginScreen({
 
         <form onSubmit={submit} className="space-y-3">
           <div>
-            <label className="mb-1 block text-sm font-medium text-slate-300">Username</label>
+            <label htmlFor="login-username" className="mb-1 block text-sm font-medium text-slate-300">Username</label>
             <input
+              id="login-username"
+              name="username"
+              autoComplete="username"
               autoFocus
               value={username}
               onChange={(e) => setUsername(e.target.value)}
@@ -60,8 +63,11 @@ export function LoginScreen({
             />
           </div>
           <div>
-            <label className="mb-1 block text-sm font-medium text-slate-300">Password</label>
+            <label htmlFor="login-password" className="mb-1 block text-sm font-medium text-slate-300">Password</label>
             <input
+              id="login-password"
+              name="password"
+              autoComplete={needsSetup ? "new-password" : "current-password"}
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
