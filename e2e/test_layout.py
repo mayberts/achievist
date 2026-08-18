@@ -81,6 +81,24 @@ async def test_header_labels_stay_on_one_line(page):
             assert await _lines(tab) == 1, f"nav tab '{label}' wrapped at {width}px wide"
 
 
+async def test_search_palette_opens_on_ctrl_k_and_finds_a_real_game(page):
+    """The unit tests drive a mocked api. This is the one check that the
+    shortcut, the live endpoints and the rendering line up in a browser."""
+    await page.keyboard.press("Control+k")
+    dialog = page.locator("[role=dialog]")
+    await dialog.wait_for(state="visible", timeout=5000)
+
+    # No command glyph anywhere: this is a Windows household.
+    assert "⌘" not in await dialog.inner_text()
+
+    await page.locator("[role=dialog] input").fill("Finished")
+    await page.locator("[role=option]").first.wait_for(timeout=5000)
+    assert "A Finished Game" in await dialog.inner_text()
+
+    await page.keyboard.press("Enter")
+    await page.wait_for_url("**/games/**", timeout=5000)
+
+
 async def test_home_panels_render_with_real_size(page):
     """A collapsed or zero-height card looks fine to jsdom and broken in a
     browser, so assert each panel actually occupies space."""
