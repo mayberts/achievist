@@ -62,6 +62,24 @@ describe("CommandPalette", () => {
     expect(document.body.textContent).not.toContain("Cmd");
   });
 
+  it("does not grab focus when the page loads", () => {
+    // The focus-restore effect also runs on mount, where the palette is
+    // already closed. Restoring unconditionally put focus on the trigger on
+    // every page load, which pushed the first Tab past the skip link.
+    setup();
+    expect(document.activeElement).toBe(document.body);
+  });
+
+  it("returns focus to the trigger after it has been opened and closed", async () => {
+    const user = userEvent.setup();
+    setup();
+    await user.keyboard("{Control>}k{/Control}");
+    await user.keyboard("{Escape}");
+    expect(document.activeElement).toBe(
+      screen.getByRole("button", { name: /search games and achievements/i }),
+    );
+  });
+
   it("opens on Ctrl+K and closes on Escape", async () => {
     const user = userEvent.setup();
     setup();
