@@ -99,6 +99,25 @@ async def test_search_palette_opens_on_ctrl_k_and_finds_a_real_game(page):
     await page.wait_for_url("**/games/**", timeout=5000)
 
 
+async def test_manifest_is_linked_and_actually_reachable(page):
+    """The unit tests check the manifest file on disk. This checks the served
+    app links it and the server hands it back — a path or content-type
+    mistake breaks installability with no visible error anywhere."""
+    href = await page.locator("link[rel=manifest]").first.get_attribute("href")
+    assert href
+
+    resp = await page.request.get(href)
+    assert resp.status == 200
+    assert "manifest" in resp.headers.get("content-type", "")
+    body = await resp.json()
+    assert body["display"] == "standalone"
+
+    for icon in body["icons"]:
+        icon_resp = await page.request.get(icon["src"])
+        assert icon_resp.status == 200, f"{icon['src']} is 404 on the real server"
+        assert icon_resp.headers.get("content-type", "").startswith("image/")
+
+
 async def test_home_panels_render_with_real_size(page):
     """A collapsed or zero-height card looks fine to jsdom and broken in a
     browser, so assert each panel actually occupies space."""

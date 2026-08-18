@@ -5,6 +5,9 @@ import App from "./App";
 import { ToastProvider } from "./components/Toast";
 import { AuthGate } from "./lib/auth";
 import "./index.css";
+import { registerServiceWorker } from "./lib/registerSW";
+
+registerServiceWorker();
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
