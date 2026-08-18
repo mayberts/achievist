@@ -951,12 +951,8 @@ async def achievements_search(
             f"""
             SELECT
                 a.platform_ach_id, a.name, a.description, a.icon_url, a.points, a.rarity_pct,
-                a.guide_url,
                 ua.unlocked, ua.unlocked_at,
                 pg.id AS platform_game_id, pg.name AS game_name, pg.platform,
-                -- Carried so the guide link can use Steam's appid rather than
-                -- guessing a site slug from the game's name.
-                pg.platform_app_id,
                 pg.sgdb_cover_url, pg.icon_url AS game_icon_url
             FROM achievements a
             JOIN platform_games pg ON pg.id = a.platform_game_id
