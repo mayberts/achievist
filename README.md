@@ -63,6 +63,28 @@ After that, you can also add other public gamertags as separate accounts.
 - **GOG is not supported.** GOG's achievement API requires a separate developer-issued secret *per game*, extracted individually from each game's files — there's no universal token, so it isn't a one-time integration.
 - **Epic Games** achievement data is fully public (no auth beyond your account ID) via Epic's Store GraphQL API.
 
+## Accounts and sessions
+
+Logins are throttled. Eight failed attempts on one username within 15 minutes
+locks that username out for 10 minutes; the correct password clears the count
+immediately. There is a much looser per-IP cap (30) as a backstop against
+someone spraying many usernames — deliberately loose, because behind a reverse
+proxy every request arrives from one address and a tight limit there would let
+one attacker lock out the whole household.
+
+The trade-off runs the other way too: anyone who can reach the login page can
+lock one person out for 10 minutes by guessing badly on purpose. That is an
+annoyance rather than damage, and it is the price of the protection.
+
+Counters live in memory. The app runs a single uvicorn process, so there is
+nothing to share them with, and they reset on restart. **If you ever run it
+with multiple workers, this has to move to Postgres** — otherwise each worker
+enforces its own limit and the effective cap multiplies by the worker count.
+
+Expired sessions are swept once at startup and daily thereafter. Sessions last
+30 days and lookups already filter on expiry, so the old rows were harmless —
+just permanent.
+
 ## Optional app-level settings (`.env`)
 
 Copy `.env.example` to `.env` for these — none are required to start the app:

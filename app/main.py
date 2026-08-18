@@ -7,12 +7,12 @@ from contextlib import asynccontextmanager
 from datetime import date, datetime, timedelta, timezone
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from fastapi import Cookie, Depends, FastAPI, HTTPException, Query, Response
+from fastapi import Cookie, Depends, FastAPI, HTTPException, Query, Request, Response
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from app import auth, backup, config, db, hltb as hltb_names, milestones as milestones_def
+from app import auth, backup, config, db, hltb as hltb_names, milestones as milestones_def, ratelimit
 from app.db import _fetch, _fetchrow
 from app.platforms import PLATFORMS
 from app.platforms import trueachievements
@@ -426,6 +426,8 @@ async def lifespan(app: FastAPI):
     asyncio.create_task(_enrich_igdb())
     asyncio.create_task(_enrich_sgdb())
 
+    await _purge_expired_sessions()
+    _scheduler.add_job(_purge_expired_sessions, "interval", hours=24)
     _scheduler.add_job(run_sync, "interval", hours=config.SYNC_INTERVAL_HOURS)
     _scheduler.add_job(backup.create_backup_safe, "interval", hours=config.BACKUP_INTERVAL_HOURS)
     _scheduler.start()
@@ -435,6 +437,21 @@ async def lifespan(app: FastAPI):
     _scheduler.shutdown(wait=False)
     if db._pool:
         await db._pool.close()
+
+
+async def _purge_expired_sessions() -> None:
+    """Daily, and once at boot so an install that has been running for months
+    without this doesn't wait a day for its first sweep."""
+    try:
+        pool = await db.get_pool()
+        async with pool.connection() as conn:
+            removed = await db.delete_expired_sessions(conn)
+        if removed:
+            log.info("Purged %d expired session(s)", removed)
+    except Exception as e:
+        # A failed sweep must never take the scheduler down with it; the rows
+        # are inert either way and the next run will pick them up.
+        log.warning("Expired-session purge failed: %s", e)
 
 
 app = FastAPI(title="Achievist", lifespan=lifespan)
@@ -491,14 +508,48 @@ async def auth_setup(payload: dict, response: Response):
 
 
 @app.post("/api/auth/login")
-async def auth_login(payload: dict, response: Response):
+async def auth_login(payload: dict, request: Request, response: Response):
     username = (payload.get("username") or "").strip()
     password = payload.get("password") or ""
+
+    ukey = ratelimit.user_key(username)
+    ikey = ratelimit.ip_key(request.client.host if request.client else "unknown")
+
+    # Checked before the password is verified, so a locked-out attacker cannot
+    # keep the server busy hashing.
+    wait = max(ratelimit.limiter.retry_after(ukey), ratelimit.limiter.retry_after(ikey))
+    if wait:
+        raise HTTPException(
+            status_code=429,
+            detail="Too many failed attempts. Try again shortly.",
+            headers={"Retry-After": str(wait)},
+        )
+
     pool = await db.get_pool()
     async with pool.connection() as conn:
         user = await db.get_user_by_username(conn, username)
-        if not user or not auth.verify_password(password, user["password_hash"]):
+        # Verify against a dummy hash when the user does not exist, so an
+        # unknown username takes the same ~PBKDF2 time as a wrong password.
+        # Returning early instead would time-leak which accounts are real.
+        stored = user["password_hash"] if user else auth.DUMMY_HASH
+        ok = auth.verify_password(password, stored)
+        if not user or not ok:
+            ratelimit.limiter.record_failure(
+                ukey,
+                max_attempts=ratelimit.USER_MAX_ATTEMPTS,
+                window=ratelimit.USER_WINDOW_SECONDS,
+                lockout=ratelimit.USER_LOCKOUT_SECONDS,
+            )
+            ratelimit.limiter.record_failure(
+                ikey,
+                max_attempts=ratelimit.IP_MAX_ATTEMPTS,
+                window=ratelimit.IP_WINDOW_SECONDS,
+                lockout=ratelimit.IP_LOCKOUT_SECONDS,
+            )
             raise HTTPException(status_code=401, detail="Invalid username or password")
+
+        ratelimit.limiter.reset(ukey)
+        ratelimit.limiter.reset(ikey)
         await _start_session(conn, response, user["id"])
         return {
             "id": user["id"], "username": user["username"],
