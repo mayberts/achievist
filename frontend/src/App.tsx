@@ -5,7 +5,7 @@ import { api } from "./api";
 import type { Summary, SyncProgress } from "./types";
 import { useAuth } from "./lib/auth";
 import { AppBackground } from "./components/AppBackground";
-import { Nav, type Tab } from "./components/Nav";
+import { Nav, visibleTabs, type Tab } from "./components/Nav";
 import { SummaryBar } from "./components/SummaryBar";
 import { BackToTop } from "./components/BackToTop";
 import { useToast } from "./components/Toast";
@@ -42,9 +42,11 @@ export default function App() {
   // doesn't fight with AchievementsPage's own useSearchParams-driven filters.
   useEffect(() => {
     const t = searchParams.get("tab") as Tab | null;
-    if (t) setTab(t);
+    // Checked against the tabs this user can actually see, so a hand-typed
+    // ?tab=maintenance doesn't land a non-admin on a tab that isn't theirs.
+    if (t && visibleTabs(user.is_admin).includes(t)) setTab(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchParams]);
+  }, [searchParams, user.is_admin]);
 
   const loadSummary = useCallback(() => {
     api.summary().then(setSummary).catch(() => setSummary(null));
@@ -182,6 +184,7 @@ export default function App() {
               if (t === "accounts") loadAccountErrors();
             }}
             accountErrors={accountErrors}
+            isAdmin={user.is_admin}
           />
           {/* shrink-0/nowrap: the tab bar is wide enough — and grew by a tab
               when Home landed — that on a mid-width viewport flex would

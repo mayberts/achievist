@@ -1761,7 +1761,7 @@ async def game_achievements(platform_game_id: int, user: dict = Depends(require_
 
 
 @app.get("/api/hltb-test")
-async def hltb_test(name: str = Query(...)):
+async def hltb_test(name: str = Query(...), admin: dict = Depends(require_admin)):
     """Test HLTB search for a game name. Use to verify the library works."""
     try:
         from howlongtobeatpy import HowLongToBeat
@@ -1791,6 +1791,7 @@ async def exophase_origin_debug(
     game_id: int | None = Query(None),
     player_id: int | None = Query(None),
     environment: str = Query("origin"),
+    admin: dict = Depends(require_admin),
 ):
     """
     Temporary diagnostic: dumps Exophase's raw public API response for a
@@ -1838,6 +1839,7 @@ async def exophase_match_debug(
     page_type: str = Query("achievements"),
     master_playerid: int = Query(...),
     master_id: int = Query(...),
+    admin: dict = Depends(require_admin),
 ):
     """
     Temporary diagnostic: some unlocked achievements aren't showing as
@@ -1865,7 +1867,11 @@ async def exophase_match_debug(
 
 
 @app.get("/api/exophase-page-debug")
-async def exophase_page_debug(exo_slug: str = Query(...), page_type: str = Query("achievements")):
+async def exophase_page_debug(
+    exo_slug: str = Query(...),
+    page_type: str = Query("achievements"),
+    admin: dict = Depends(require_admin),
+):
     """
     Temporary diagnostic: fetches an Exophase game achievements/challenges
     page and reports what the real scraper (fetch_game_page_awards, the
@@ -1904,7 +1910,7 @@ async def exophase_page_debug(exo_slug: str = Query(...), page_type: str = Query
 
 
 @app.post("/api/exophase-refresh", status_code=202)
-async def exophase_refresh():
+async def exophase_refresh(admin: dict = Depends(require_admin)):
     """Clear all Exophase-sourced icons and re-enrich from scratch."""
     pool = await db.get_pool()
     async with pool.connection() as conn:
@@ -1917,7 +1923,7 @@ async def exophase_refresh():
 
 
 @app.post("/api/exophase-import-icons")
-async def exophase_import_icons(payload: dict):
+async def exophase_import_icons(payload: dict, admin: dict = Depends(require_admin)):
     """
     Accept a JSON body {game_name: str, icons: {achievement_name: icon_url}}
     and update matching achievements in the DB.
@@ -2011,7 +2017,7 @@ async def exophase_import_icons(payload: dict):
 
 
 @app.post("/api/hltb-refresh", status_code=202)
-async def hltb_refresh():
+async def hltb_refresh(admin: dict = Depends(require_admin)):
     """Reset all HLTB data and re-enrich from scratch."""
     pool = await db.get_pool()
     async with pool.connection() as conn:
@@ -2021,7 +2027,7 @@ async def hltb_refresh():
 
 
 @app.post("/api/igdb-refresh", status_code=202)
-async def igdb_refresh(platform: str | None = None):
+async def igdb_refresh(platform: str | None = None, *, admin: dict = Depends(require_admin)):
     """Re-run IGDB enrichment including previously failed (-1) lookups.
     Pass ?platform=xbox to reset and retry only Xbox games."""
     pool = await db.get_pool()
@@ -2037,7 +2043,7 @@ async def igdb_refresh(platform: str | None = None):
 
 
 @app.post("/api/sgdb-refresh", status_code=202)
-async def sgdb_refresh(force: bool = False):
+async def sgdb_refresh(force: bool = False, *, admin: dict = Depends(require_admin)):
     """
     Re-run SteamGridDB enrichment. By default only fills in games that don't
     have a cover yet; pass ?force=true to re-fetch every cover from scratch
@@ -2067,7 +2073,7 @@ async def _sgdb_art_for(client, headers: dict, base: str, game_id: int) -> dict:
 
 
 @app.get("/api/sgdb-search")
-async def sgdb_search(q: str):
+async def sgdb_search(q: str, _user: dict = Depends(require_user)):
     """
     Search SteamGridDB by name or numeric game ID. Returns both Heroes (wide
     banner art with no logo baked in — the best fit for our full-bleed cards)
@@ -2097,7 +2103,7 @@ async def sgdb_search(q: str):
 
 
 @app.post("/api/sgdb-set")
-async def sgdb_set(platform_game_id: int, url: str):
+async def sgdb_set(platform_game_id: int, url: str, _user: dict = Depends(require_user)):
     """Manually set the SGDB cover URL for a game."""
     pool = await db.get_pool()
     async with pool.connection() as conn:
@@ -2263,7 +2269,7 @@ def _redact_account(row: dict) -> dict:
 
 
 @app.get("/api/platforms")
-async def list_platforms():
+async def list_platforms(_user: dict = Depends(require_user)):
     """Connection schemas for every supported platform (drives the Settings UI)."""
     return [cls.connect_schema() for cls in PLATFORMS.values()]
 
@@ -2378,7 +2384,7 @@ async def xbox_dedup(user: dict = Depends(require_user)):
 
 
 @app.post("/api/xbox-dedup-games")
-async def xbox_dedup_games():
+async def xbox_dedup_games(admin: dict = Depends(require_admin)):
     """
     Merge duplicate Xbox games: Xbox's titleHistory returns a separate titleId
     per platform release of the same game (e.g. console vs PC/Game Pass), which
@@ -2423,14 +2429,14 @@ async def xbox_dedup_games():
 
 
 @app.get("/api/psn-service-status")
-async def psn_service_status():
+async def psn_service_status(_user: dict = Depends(require_user)):
     """Whether the backend PlayStation session is present and still valid."""
     from app.psn_auth import service_ticket_valid
     return {"signed_in": await service_ticket_valid()}
 
 
 @app.post("/api/psn-service-ticket")
-async def psn_service_ticket(payload: dict):
+async def psn_service_ticket(payload: dict, _user: dict = Depends(require_user)):
     """
     Store the backend PlayStation credential from an npsso token.
     Body: {"npsso": "<64-char token from ca.account.sony.com/api/v1/ssocookie>"}
@@ -2447,14 +2453,14 @@ async def psn_service_ticket(payload: dict):
 
 
 @app.get("/api/xbox-service-status")
-async def xbox_service_status():
+async def xbox_service_status(_user: dict = Depends(require_user)):
     """Whether a backend Xbox sign-in exists (so gamertag lookups can work)."""
     from app.xbox_auth import load_refresh_token
     return {"signed_in": bool(config.XBOX_REFRESH_TOKEN or load_refresh_token())}
 
 
 @app.get("/api/xbox-setup")
-async def xbox_setup():
+async def xbox_setup(_user: dict = Depends(require_user)):
     """Start device code flow. Returns a user_code to enter at microsoft.com/devicelogin."""
     from app.xbox_auth import start_device_flow
     try:
@@ -2475,7 +2481,7 @@ async def xbox_setup():
 
 
 @app.get("/api/xbox-setup-poll")
-async def xbox_setup_poll(device_code: str):
+async def xbox_setup_poll(device_code: str, _user: dict = Depends(require_user)):
     """Poll for device code flow completion. Call repeatedly until status=done."""
     from app.xbox_auth import poll_device_flow, get_tokens
     try:
@@ -2499,7 +2505,7 @@ async def xbox_setup_poll(device_code: str):
 
 
 @app.get("/api/xbox-360-debug")
-async def xbox_360_debug(game_id: int):
+async def xbox_360_debug(game_id: int, *, admin: dict = Depends(require_admin)):
     """Return raw contract v1 achievement API responses for a 360 game (use the Achievist game_id from /game/<id> URL)."""
     from app.xbox_auth import get_tokens, load_refresh_token
     from app.platforms.xbox import _xbl_headers, _ACH
@@ -2570,7 +2576,7 @@ async def status():
 
 
 @app.get("/api/exophase-debug")
-async def exophase_debug():
+async def exophase_debug(admin: dict = Depends(require_admin)):
     """Debug Exophase integration: show games list fetch result and sample icon lookup."""
     from app.platforms.exophase import fetch_games_list, fetch_earned_icons, _to_slug
 

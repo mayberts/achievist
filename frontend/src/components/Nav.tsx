@@ -10,7 +10,7 @@ export type Tab =
   | "leaderboard"
   | "maintenance";
 
-const TABS: { key: Tab; label: string; icon: React.ReactNode }[] = [
+const TABS: { key: Tab; label: string; icon: React.ReactNode; adminOnly?: boolean }[] = [
   { key: "home", label: "Home", icon: <House size={16} /> },
   { key: "games", label: "Games", icon: <Gamepad2 size={16} /> },
   { key: "achievements", label: "Achievements", icon: <Trophy size={16} /> },
@@ -18,18 +18,25 @@ const TABS: { key: Tab; label: string; icon: React.ReactNode }[] = [
   { key: "accounts", label: "Accounts", icon: <Settings2 size={16} /> },
   { key: "statistics", label: "Statistics", icon: <BarChart3 size={16} /> },
   { key: "leaderboard", label: "Leaderboard", icon: <Crown size={16} /> },
-  { key: "maintenance", label: "Maintenance", icon: <Wrench size={16} /> },
+  { key: "maintenance", label: "Maintenance", icon: <Wrench size={16} />, adminOnly: true },
 ];
+
+export function visibleTabs(isAdmin: boolean): Tab[] {
+  return TABS.filter((t) => !t.adminOnly || isAdmin).map((t) => t.key);
+}
 
 export function Nav({
   tab,
   onChange,
   accountErrors = 0,
+  isAdmin = false,
 }: {
   tab: Tab;
   onChange: (t: Tab) => void;
   accountErrors?: number;
+  isAdmin?: boolean;
 }) {
+  const tabs = TABS.filter((t) => !t.adminOnly || isAdmin);
   return (
     <div className="relative -mx-3 sm:mx-0">
       {/* Scrolls sideways on mobile; wraps onto a second row on desktop.
@@ -37,7 +44,7 @@ export function Nav({
           which assumed the tabs always fit — once there were eight of them
           they did not, and the whole page scrolled sideways at 1024px. */}
       <nav className="flex flex-nowrap gap-1 overflow-x-auto px-3 sm:flex-wrap sm:overflow-visible sm:px-0">
-        {TABS.map((t) => (
+        {tabs.map((t) => (
           <button
             key={t.key}
             onClick={() => onChange(t.key)}

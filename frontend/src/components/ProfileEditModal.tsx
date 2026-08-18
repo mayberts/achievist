@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { X } from "lucide-react";
+import { FileJson, X } from "lucide-react";
 import { api } from "../api";
 import type { Profile } from "../types";
 import { useToast } from "./Toast";
@@ -128,6 +128,26 @@ export function ProfileEditModal({
           >
             {saving ? "Saving…" : "Save"}
           </button>
+
+          {/* Export lives here, next to your name and your sharing setting,
+              because it is your data. It used to sit on the Maintenance tab
+              among app-wide admin jobs, which both hid it from the people it
+              belongs to and kept that tab visible to everyone. */}
+          <div className="border-t border-line pt-4">
+            <div className="mb-1 text-xs font-medium text-muted">Your data</div>
+            <a
+              href="/api/export"
+              download
+              className="inline-flex items-center gap-1.5 rounded-lg border border-line bg-ink-900 px-3 py-2 text-sm font-medium text-slate-200 transition hover:bg-ink-800"
+            >
+              <FileJson size={15} className="text-faint" />
+              Export my data
+            </a>
+            <p className="mt-1.5 text-xs text-faint">
+              Your library and unlocked achievements as JSON — just yours, with no connected-account
+              credentials and nothing from anyone else.
+            </p>
+          </div>
         </div>
       </div>
     </div>

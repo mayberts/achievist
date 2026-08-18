@@ -21,12 +21,17 @@ async def client():
         yield c
 
 
-async def test_platforms_endpoint_lists_every_registered_platform(client):
-    resp = await client.get("/api/platforms")
-    assert resp.status_code == 200
-    data = resp.json()
-    keys = {p["key"] for p in data}
+async def test_every_registered_platform_exposes_a_connect_schema():
+    # Checked against the classes rather than over HTTP: /api/platforms now
+    # needs a session (see tests/test_endpoint_auth.py), and logging in needs
+    # a database, which this module deliberately does without.
+    keys = {cls.connect_schema()["key"] for cls in PLATFORMS.values()}
     assert keys == set(PLATFORMS.keys())
+
+
+async def test_platforms_endpoint_needs_a_session(client):
+    resp = await client.get("/api/platforms")
+    assert resp.status_code == 401
 
 
 async def test_spa_fallback_serves_html(client):
