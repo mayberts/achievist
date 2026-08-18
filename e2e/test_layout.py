@@ -11,6 +11,8 @@ Each test costs a browser launch, so the viewport sweeps loop inside one
 test rather than being parametrized into many.
 """
 
+from urllib.parse import urljoin
+
 # The widths that matter: the narrowest desktop layout, the width where the
 # wrapping regression showed up, and a roomy one.
 VIEWPORTS = [(1024, 900), (1280, 900), (1600, 900)]
@@ -106,14 +108,16 @@ async def test_manifest_is_linked_and_actually_reachable(page):
     href = await page.locator("link[rel=manifest]").first.get_attribute("href")
     assert href
 
-    resp = await page.request.get(href)
+    # The request context has no baseURL of its own, so root-relative hrefs
+    # have to be resolved against the page before it will accept them.
+    resp = await page.request.get(urljoin(page.url, href))
     assert resp.status == 200
     assert "manifest" in resp.headers.get("content-type", "")
     body = await resp.json()
     assert body["display"] == "standalone"
 
     for icon in body["icons"]:
-        icon_resp = await page.request.get(icon["src"])
+        icon_resp = await page.request.get(urljoin(page.url, icon["src"]))
         assert icon_resp.status == 200, f"{icon['src']} is 404 on the real server"
         assert icon_resp.headers.get("content-type", "").startswith("image/")
 
