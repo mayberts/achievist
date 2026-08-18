@@ -9,6 +9,11 @@
   body {
     @apply bg-ink-950 text-slate-100 antialiased;
     font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+    /* The viewport is viewport-fit=cover so the installed app paints its
+       background under the notch and the home indicator; these keep the
+       content itself out from under them. Zero on every desktop browser. */
+    padding: env(safe-area-inset-top) env(safe-area-inset-right)
+      env(safe-area-inset-bottom) env(safe-area-inset-left);
   }
   /* thin custom scrollbar */
   ::-webkit-scrollbar {

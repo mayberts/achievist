@@ -2634,11 +2634,17 @@ async def exophase_debug(admin: dict = Depends(require_admin)):
     }
 
 
+import mimetypes
 import os
 
 # Serve the built React SPA from app/webdist (produced by `vite build`).
 # Falls back to the legacy static dir if the build output isn't present.
 _WEB_DIR = os.path.abspath("app/webdist" if os.path.isdir("app/webdist") else "app/static")
+
+# Not in Python's default table, and FileResponse guesses the content type
+# from the extension. Without this the manifest goes out as octet-stream and
+# the browser declines to treat the app as installable.
+mimetypes.add_type("application/manifest+json", ".webmanifest")
 _INDEX = os.path.join(_WEB_DIR, "index.html")
 
 

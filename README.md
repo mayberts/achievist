@@ -115,6 +115,35 @@ keys, tokens) for every connected platform. Treat them like secrets — store
 downloaded copies somewhere access-controlled, not in a shared or public
 location.
 
+## Installing on a phone
+
+Achievist is a PWA, so it installs to a home screen without an app store.
+
+- **Android / Chrome** — open the site and use the "Install app" prompt, or
+  ⋮ → *Add to Home screen*.
+- **iOS / Safari** — Share → *Add to Home Screen*. iOS ignores the manifest
+  and uses the `apple-touch-icon`, which is why both exist.
+
+Installed, it opens with no browser chrome, gets its own icon and its own
+entry in the task switcher.
+
+**This needs HTTPS.** Service workers require a secure context, and browsers
+count only `localhost` as an exception — reached over plain `http://` at a
+LAN address like `http://192.168.1.20:8000`, the app still works fine but
+will not offer to install. Put it behind a reverse proxy with a certificate
+(Caddy or Tailscale Serve both do this with no manual certificate work).
+
+**It is not an offline app.** The service worker exists because Chrome will
+not offer to install without one, and it caches only the content-hashed
+build assets. It deliberately never touches `/api/*`: those responses are one
+person's private library behind a session cookie, and a cached copy could be
+handed to whoever signs in next on a shared device. Open it with no
+connection and you get the browser's offline page.
+
+Regenerate the icons with `pip install pillow && python scripts/make_icons.py`
+— they are committed as PNGs so neither the build nor CI needs an image
+library.
+
 ## Cover art priority
 
 For non-Steam games, covers are resolved in this order:
