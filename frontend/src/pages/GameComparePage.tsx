@@ -5,7 +5,7 @@ import { api } from "../api";
 import type { GameComparison } from "../types";
 import { platformLabel } from "../lib/platforms";
 import { RARITY_TIER_CLASS, rarityTier } from "../lib/rarity";
-import { gameDirectUrl, guideSearchUrl } from "../lib/guideLink";
+import { guideUrl } from "../lib/guideLink";
 import { fmtDate } from "../lib/format";
 
 export function GameComparePage() {
@@ -102,12 +102,14 @@ export function GameComparePage() {
                         );
                       })}
                       <a
-                        href={
-                          a.guide_url ||
-                          data.game.guide_url ||
-                          gameDirectUrl(data.game.platform, data.game.name) ||
-                          guideSearchUrl(data.game.platform, data.game.name, a.name)
-                        }
+                        href={guideUrl({
+                          platform: data.game.platform,
+                          gameName: data.game.name,
+                          achievementName: a.name,
+                          appId: data.game.platform_app_id,
+                          achievementGuideUrl: a.guide_url,
+                          gameGuideUrl: data.game.guide_url,
+                        })}
                         target="_blank"
                         rel="noopener noreferrer"
                         title="Find a guide for this achievement"

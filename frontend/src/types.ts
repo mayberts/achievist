@@ -85,6 +85,7 @@ export interface GameComparison {
     platform: string;
     name: string;
     icon_url: string | null;
+    platform_app_id: string | null;
     sgdb_cover_url: string | null;
     guide_url: string | null;
   };
@@ -192,6 +193,9 @@ export interface AchievementSearchResult extends Achievement {
   platform_game_id: number;
   game_name: string;
   platform: string;
+  // Carried so a guide link can use Steam's appid instead of guessing a
+  // site slug from the game's name.
+  platform_app_id: string | null;
   sgdb_cover_url: string | null;
   game_icon_url: string | null;
 }

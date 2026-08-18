@@ -73,3 +73,51 @@ export function guideSearchUrl(platform: string, gameName: string, achievementNa
   const query = site ? `site:${site} ${gameName} ${achievementName ?? ""}`.trim() : terms;
   return `https://www.google.com/search?q=${encodeURIComponent(query)}`;
 }
+
+// Steam Community Guides, keyed off the appid we already store.
+//
+// This exists because TSA's coverage runs out fast: it has staff/community
+// guides for popular games and nothing for the long tail, so the slug guess
+// above lands on a real page with no guide on it. Steam's own community
+// guides go much deeper — obscure indies usually have at least one — and
+// because we hold the appid this is an *exact* link rather than a guess,
+// with none of the slug-massaging gameDirectUrl needs.
+export function steamGuidesUrl(appId: string | null | undefined): string | null {
+  if (!appId) return null;
+  return `https://steamcommunity.com/app/${encodeURIComponent(appId)}/guides/`;
+}
+
+/**
+ * The one place that decides where a "find a guide" link points.
+ *
+ * Three call sites had this waterfall pasted inline, which is how they
+ * drifted apart; the achievements list never had the game-level tier at all.
+ *
+ * Order, best-known first:
+ *   1. server-confirmed link for this exact achievement
+ *   2. server-confirmed link for the game
+ *   3. Steam Community Guides (exact, by appid) — Steam only
+ *   4. TA/TSA game page guessed from the name — Xbox and Steam
+ *   5. a site-scoped web search
+ *
+ * Steam sits above the TA/TSA guess deliberately: the guess is name-derived
+ * and can land on the wrong game or a page with no guide, while the appid
+ * link cannot. For Xbox there is no equivalent, so TA keeps its place.
+ */
+export function guideUrl(opts: {
+  platform: string;
+  gameName: string;
+  achievementName?: string | null;
+  appId?: string | null;
+  achievementGuideUrl?: string | null;
+  gameGuideUrl?: string | null;
+}): string {
+  const { platform, gameName, achievementName, appId, achievementGuideUrl, gameGuideUrl } = opts;
+  return (
+    achievementGuideUrl ||
+    gameGuideUrl ||
+    (platform === "steam" ? steamGuidesUrl(appId) : null) ||
+    gameDirectUrl(platform, gameName) ||
+    guideSearchUrl(platform, gameName, achievementName)
+  );
+}
