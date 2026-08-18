@@ -1,45 +1,39 @@
 import { useEffect, useState } from "react";
-import { DatabaseBackup, Download, Clock, FileJson, ImageDown, Trash2, UserPlus, Users } from "lucide-react";
+import { DatabaseBackup, Download, Clock, ImageDown, Trash2, UserPlus, Users } from "lucide-react";
 import { api } from "../api";
 import type { BackupInfo, User } from "../types";
 import { fmtBytes, fmtRelative } from "../lib/format";
 import { useToast } from "../components/Toast";
 
+/**
+ * Every section here acts on the whole install, not on one person: the cover
+ * and time-to-beat jobs rewrite rows in everyone's library, and the cover one
+ * says so — it overwrites manually chosen art. So the page is admin-only, and
+ * Nav hides the tab for everyone else. Personal export moved to the profile
+ * modal, where it belongs. Keep it that way: anything user-scoped that lands
+ * here becomes invisible to the people it is for.
+ */
 export function MaintenancePage({ isAdmin }: { isAdmin: boolean }) {
+  if (!isAdmin) {
+    return (
+      <div className="py-16 text-center text-muted">
+        Maintenance is admin-only. Your own data export lives in your profile — click your name at
+        the top of the page.
+      </div>
+    );
+  }
   return (
     <div>
       <div className="mb-2 text-lg font-semibold text-slate-100">Maintenance</div>
       <p className="mb-5 text-sm text-muted">
-        App-wide background jobs: database backups and enrichment (cover art, time-to-beat).
+        App-wide background jobs: database backups and enrichment (cover art, time-to-beat). These
+        affect every account in this install.
       </p>
 
-      {isAdmin && <FamilySection />}
-      <MyDataSection />
+      <FamilySection />
       <CoversSection />
       <HltbSection />
-      {isAdmin && <BackupsSection />}
-    </div>
-  );
-}
-
-function MyDataSection() {
-  return (
-    <div className="mb-8">
-      <div className="mb-2 text-base font-semibold text-slate-100">My Data</div>
-      <p className="mb-3 text-sm text-muted">
-        Download your own library and unlocked achievements as JSON — just your data, no connected-account
-        credentials and nothing from anyone else's library.
-      </p>
-      <div className="rounded-card border border-line bg-ink-850 p-4">
-        <a
-          href="/api/export"
-          download
-          className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-2 text-sm font-semibold text-white transition hover:bg-accent/90"
-        >
-          <FileJson size={15} />
-          Export my data
-        </a>
-      </div>
+      <BackupsSection />
     </div>
   );
 }

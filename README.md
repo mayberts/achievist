@@ -96,6 +96,14 @@ game's SteamGridDB cover art from scratch (`POST /api/sgdb-refresh?force=true`)
 — useful after a change to which art is preferred, or if a batch of covers
 still look wrong.
 
+**Maintenance is admin-only**, and its tab is hidden for everyone else. Every
+section on it acts on the whole install rather than on one person — the cover
+refresh overwrites manually chosen art in every account's library — so the
+endpoints behind them require an admin session, not just a logged-in one.
+Personal data export is not a maintenance job and lives in the **profile**
+dialog (click your name at the top of the page); it serves `GET /api/export`,
+which any signed-in user may call and which only ever returns their own data.
+
 **Restore** a downloaded `.dump` file into a running stack:
 
 ```sh
