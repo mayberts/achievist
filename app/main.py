@@ -492,7 +492,7 @@ async def auth_status(user: dict | None = Depends(get_current_user)):
 
 
 @app.post("/api/auth/setup")
-async def auth_setup(payload: dict, response: Response):
+async def auth_setup(payload: dict, request: Request, response: Response):
     """Create the first (admin) account. Only allowed while no users exist."""
     pool = await db.get_pool()
     async with pool.connection() as conn:
@@ -503,7 +503,7 @@ async def auth_setup(payload: dict, response: Response):
         if not username or len(password) < 8:
             raise HTTPException(status_code=400, detail="Username required; password must be 8+ characters")
         user = await db.create_user(conn, username, auth.hash_password(password), is_admin=True)
-        await _start_session(conn, response, user["id"])
+        await _start_session(conn, request, response, user["id"])
         return {"id": user["id"], "username": user["username"], "is_admin": True}
 
 
@@ -550,7 +550,7 @@ async def auth_login(payload: dict, request: Request, response: Response):
 
         ratelimit.limiter.reset(ukey)
         ratelimit.limiter.reset(ikey)
-        await _start_session(conn, response, user["id"])
+        await _start_session(conn, request, response, user["id"])
         return {
             "id": user["id"], "username": user["username"],
             "display_name": user["display_name"], "avatar_url": user["avatar_url"],
@@ -559,16 +559,23 @@ async def auth_login(payload: dict, request: Request, response: Response):
 
 
 @app.post("/api/auth/logout")
-async def auth_logout(response: Response, achievist_session: str | None = Cookie(None)):
+async def auth_logout(
+    request: Request, response: Response, achievist_session: str | None = Cookie(None),
+):
     if achievist_session:
         pool = await db.get_pool()
         async with pool.connection() as conn:
             await db.delete_session(conn, achievist_session)
-    response.delete_cookie(auth.SESSION_COOKIE)
+    # Same flags as when it was set: a mismatch can leave the cookie in place
+    # in some browsers, so the session token would linger client-side even
+    # though the server row is gone.
+    response.delete_cookie(
+        auth.SESSION_COOKIE, httponly=True, samesite="lax", secure=auth.cookie_secure(request),
+    )
     return {"status": "ok"}
 
 
-async def _start_session(conn, response: Response, user_id: int) -> None:
+async def _start_session(conn, request: Request, response: Response, user_id: int) -> None:
     token = auth.new_session_token()
     expires_at = datetime.now(timezone.utc) + timedelta(days=auth.SESSION_TTL_DAYS)
     await db.create_session(conn, token, user_id, expires_at)
@@ -576,6 +583,9 @@ async def _start_session(conn, response: Response, user_id: int) -> None:
         auth.SESSION_COOKIE, token,
         max_age=auth.SESSION_TTL_DAYS * 24 * 3600,
         httponly=True, samesite="lax",
+        # Over https this stops the browser ever sending the session over
+        # plain http, including on a downgraded link an attacker forces.
+        secure=auth.cookie_secure(request),
     )
 
 
