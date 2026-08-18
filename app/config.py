@@ -13,6 +13,19 @@ RA_TARGET_USER = os.getenv("RA_TARGET_USER", "") or RA_USERNAME
 XBOX_CLIENT_ID = os.getenv("XBOX_CLIENT_ID", "")
 XBOX_REFRESH_TOKEN = os.getenv("XBOX_REFRESH_TOKEN", "")
 
+# Whether the session cookie carries the Secure flag, which stops the browser
+# ever sending it over plain http.
+#
+#   auto  (default) - set it when the request arrived over https
+#   true            - always set it; correct for an https-only deployment
+#   false           - never set it
+#
+# "auto" exists because a deployment can be reachable both ways: https from
+# outside and plain http on the LAN. Hard-coding true would silently break
+# every http login, since the browser would accept the cookie and then refuse
+# to send it back.
+COOKIE_SECURE = os.getenv("COOKIE_SECURE", "auto").strip().lower()
+
 SYNC_INTERVAL_HOURS = int(os.getenv("SYNC_INTERVAL_HOURS", "12"))
 REQUEST_DELAY_SECONDS = float(os.getenv("REQUEST_DELAY_SECONDS", "0.4"))
 

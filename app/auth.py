@@ -36,3 +36,36 @@ def new_session_token() -> str:
 # it, "no such user" returns in microseconds while a wrong password takes
 # ~100ms, which tells an attacker exactly which accounts exist.
 DUMMY_HASH = hash_password(secrets.token_urlsafe(32))
+
+
+def request_is_https(request) -> bool:
+    """
+    Whether this request reached the user over https.
+
+    X-Forwarded-Proto is checked first and on purpose. uvicorn runs without
+    --proxy-headers here, so behind a TLS-terminating reverse proxy the app
+    only ever sees http on the socket and request.url.scheme would always say
+    "http" — auto-detection would then never enable Secure on exactly the
+    deployments that need it.
+
+    The header is client-controllable in principle, but the only thing it can
+    influence is whether a cookie gets a stricter flag, and a proxy that
+    terminates TLS overwrites it anyway.
+    """
+    forwarded = request.headers.get("x-forwarded-proto", "")
+    if forwarded:
+        # A chain of proxies appends, e.g. "https, http" — the first entry is
+        # the one the browser actually spoke.
+        return forwarded.split(",")[0].strip().lower() == "https"
+    return request.url.scheme == "https"
+
+
+def cookie_secure(request) -> bool:
+    """Resolve config.COOKIE_SECURE against this request."""
+    from app import config
+
+    if config.COOKIE_SECURE == "true":
+        return True
+    if config.COOKIE_SECURE == "false":
+        return False
+    return request_is_https(request)

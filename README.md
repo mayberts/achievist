@@ -85,6 +85,27 @@ Expired sessions are swept once at startup and daily thereafter. Sessions last
 30 days and lookups already filter on expiry, so the old rows were harmless —
 just permanent.
 
+### The session cookie over HTTPS
+
+The session cookie is `HttpOnly` and `SameSite=Lax`, and carries `Secure` when
+the request arrived over https — so the browser will never send it over plain
+http, including on a link an attacker downgrades.
+
+Detection reads `X-Forwarded-Proto` before the socket's own scheme, and that
+order matters: uvicorn runs without `--proxy-headers`, so behind a
+TLS-terminating reverse proxy the app only ever sees http on the socket. Going
+by that alone would leave `Secure` off on exactly the deployments that need it.
+
+`COOKIE_SECURE` overrides the detection: `true` always sets the flag (right for
+an https-only deployment), `false` never does. The `auto` default exists
+because an install can be reachable both ways — https from outside, plain http
+on the LAN — and a hard `true` would silently break every http login: the
+browser accepts the cookie and then refuses to send it back, which looks like
+being logged out the moment you sign in.
+
+Note this is the app's half only. HSTS, redirecting http to https, and the
+certificate itself belong to whatever terminates TLS in front of it.
+
 ## Optional app-level settings (`.env`)
 
 Copy `.env.example` to `.env` for these — none are required to start the app:
@@ -97,6 +118,7 @@ Copy `.env.example` to `.env` for these — none are required to start the app:
 | `SGDB_API_KEY` | SteamGridDB landscape cover art (preferred over IGDB) |
 | `EXOPHASE_*` | Xbox 360 locked-achievement import from exophase.com |
 | `BACKUP_KEEP_COUNT`, `BACKUP_INTERVAL_HOURS` | Backup retention count / schedule (defaults: 14 kept, every 24h) |
+| `COOKIE_SECURE` | `auto` (default), `true`, or `false` — whether the session cookie carries the Secure flag |
 
 ## Backups
 
