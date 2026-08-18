@@ -8,6 +8,7 @@ import { AppBackground } from "./components/AppBackground";
 import { Nav, visibleTabs, type Tab } from "./components/Nav";
 import { SummaryBar } from "./components/SummaryBar";
 import { BackToTop } from "./components/BackToTop";
+import { CommandPalette } from "./components/CommandPalette";
 import { useToast } from "./components/Toast";
 import { HomePage } from "./pages/HomePage";
 import { GamesPage } from "./pages/GamesPage";
@@ -163,6 +164,8 @@ export default function App() {
             <Trophy size={20} className="text-accent" />
             <span className="text-lg font-bold tracking-tight text-slate-100">Achievist</span>
           </div>
+          <div className="flex items-center gap-2">
+          <CommandPalette />
           <button
             onClick={logout}
             title={`Log out (${user.username})`}
@@ -171,6 +174,7 @@ export default function App() {
             <LogOut size={13} />
             {user.username}
           </button>
+          </div>
         </div>
 
         {summary && <SummaryBar summary={summary} />}
