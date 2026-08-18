@@ -166,6 +166,28 @@ Regenerate the icons with `pip install pillow && python scripts/make_icons.py`
 — they are committed as PNGs so neither the build nor CI needs an image
 library.
 
+## Achievement guide links
+
+The "find a guide" link on a locked achievement resolves in this order:
+
+1. a server-confirmed link for that exact achievement (scraped from TA/TSA)
+2. a server-confirmed link for the game
+3. **Steam Community Guides** for the game, built from its Steam appid
+4. the TA/TSA game page, guessed from the game's name
+5. a site-scoped web search
+
+Steam sits above the TA/TSA guess on purpose. TA and TSA only carry guides
+for popular games, so for anything in the long tail the guessed slug lands on
+a real page with no guide on it. Steam's community guides go much deeper, and
+because the appid is already stored the link is exact rather than guessed —
+no slug-massaging, no `SLUG_OVERRIDES` entry needed. Xbox has no equivalent,
+so it stays on TrueAchievements; PSN keeps its `site:psnprofiles.com` search,
+which beats PSNProfiles' own search box.
+
+This is link construction only — nothing is written to the database and no
+schema changed, so `git revert` on the commit fully undoes it. The scraped
+`guide_url` columns are populated by a separate path and are unaffected.
+
 ## Cover art priority
 
 For non-Steam games, covers are resolved in this order:

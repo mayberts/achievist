@@ -5,7 +5,7 @@ import { api } from "../api";
 import type { AchievementSearchResult } from "../types";
 import { fmtDate } from "../lib/format";
 import { RARITY_TIER_CLASS, rarityTier } from "../lib/rarity";
-import { guideSearchUrl } from "../lib/guideLink";
+import { guideUrl } from "../lib/guideLink";
 import { PlatformBadge } from "../components/PlatformBadge";
 
 const RARITIES = ["", "Legendary", "Epic", "Rare", "Uncommon", "Common"];
@@ -227,7 +227,13 @@ export function AchievementsPage() {
 
                   {!isUnlocked && (
                     <a
-                      href={guideSearchUrl(a.platform, a.game_name, a.name)}
+                      href={guideUrl({
+                        platform: a.platform,
+                        gameName: a.game_name,
+                        achievementName: a.name,
+                        appId: a.platform_app_id,
+                        achievementGuideUrl: a.guide_url,
+                      })}
                       target="_blank"
                       rel="noopener noreferrer"
                       onClick={(e) => e.stopPropagation()}
