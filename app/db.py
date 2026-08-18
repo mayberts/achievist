@@ -455,6 +455,19 @@ async def delete_session(conn, token: str) -> None:
     await conn.execute("DELETE FROM sessions WHERE token = %s", (token,))
 
 
+async def delete_expired_sessions(conn) -> int:
+    """Purge sessions past their expiry, returning how many went.
+
+    Nothing swept these before: rows were only ever deleted on an explicit
+    logout, so every session that quietly expired stayed forever. Lookups
+    already filter on expires_at, so the stale rows were harmless — just
+    permanent. idx_sessions_expires makes this cheap.
+    """
+    async with conn.cursor() as cur:
+        await cur.execute("DELETE FROM sessions WHERE expires_at <= now()")
+        return cur.rowcount
+
+
 async def _fetchrow(conn, query: str, *args):
     async with conn.cursor(row_factory=dict_row) as cur:
         await cur.execute(query, args)

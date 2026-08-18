@@ -138,3 +138,14 @@ async def db_conn():
         # held a Postgres connection open for the rest of the session.
         await pool.close()
         db._pool = None
+
+
+@pytest.fixture(autouse=True)
+def _reset_login_limiter():
+    """The login throttle keeps process-global state. Left dirty, a file that
+    makes a few failed logins can push an unrelated later file over the cap."""
+    from app import ratelimit
+
+    ratelimit.limiter.clear()
+    yield
+    ratelimit.limiter.clear()

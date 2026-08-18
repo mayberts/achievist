@@ -29,3 +29,10 @@ def verify_password(password: str, stored: str) -> bool:
 
 def new_session_token() -> str:
     return secrets.token_urlsafe(32)
+
+
+# A real hash of a value nobody can log in with, so a login attempt for an
+# unknown username can still pay the same PBKDF2 cost as a real one. Without
+# it, "no such user" returns in microseconds while a wrong password takes
+# ~100ms, which tells an attacker exactly which accounts exist.
+DUMMY_HASH = hash_password(secrets.token_urlsafe(32))
