@@ -2566,54 +2566,97 @@ async def xbox_setup_poll(device_code: str, _user: dict = Depends(require_user))
 
 
 @app.get("/api/xbox-360-debug")
-async def xbox_360_debug(game_id: int, *, admin: dict = Depends(require_admin)):
-    """Return raw contract v1 achievement API responses for a 360 game (use the Achievist game_id from /game/<id> URL)."""
+async def xbox_360_debug(game_id: int, xuid: str | None = None, *, admin: dict = Depends(require_admin)):
+    """
+    Return raw contract v1/v2 achievement API responses for a 360 game (use
+    the Achievist game_id from /game/<id> URL).
+
+    Always querying tokens.xuid (the backend's signed-in account) used to be
+    a real trap here: "one backend Xbox sign-in authorizes all lookups, then
+    individual accounts get added by gamertag" means the game's actual owner
+    can easily be a *different* xuid than the signed-in one. Querying the
+    wrong xuid returns a perfectly well-formed 200 with an empty achievement
+    list — indistinguishable from "this account genuinely has nothing here"
+    unless you know to doubt it. linked_accounts.external_id *is* the xuid
+    for xbox (every account is keyed by xuid, gamertag or not — see
+    XboxPlatform.sync), so the right one can be looked up instead of assumed.
+    Pass ?xuid= explicitly to check a specific account anyway (e.g. one that
+    doesn't currently have a user_games row for this title).
+    """
     from app.xbox_auth import get_tokens, load_refresh_token
     from app.platforms.xbox import _xbl_headers, _ACH
-    # Look up the Xbox title_id from the DB
     pool = await db.get_pool()
     async with pool.connection() as conn:
         row = await _fetchrow(conn, "SELECT platform_app_id FROM platform_games WHERE id = %s", game_id)
-    if not row:
-        raise HTTPException(status_code=404, detail=f"Game {game_id} not found")
-    title_id = row["platform_app_id"]
+        if not row:
+            raise HTTPException(status_code=404, detail=f"Game {game_id} not found")
+        title_id = row["platform_app_id"]
+
+        owners = await _fetch(
+            conn,
+            "SELECT DISTINCT la.external_id AS xuid, la.display_name, u.username "
+            "FROM user_games ug "
+            "JOIN linked_accounts la ON la.id = ug.linked_account_id "
+            "JOIN users u ON u.id = la.user_id "
+            "WHERE ug.platform_game_id = %s AND la.platform = 'xbox'",
+            game_id,
+        )
+
     refresh_token = config.XBOX_REFRESH_TOKEN or load_refresh_token()
     if not refresh_token:
         raise HTTPException(status_code=400, detail="Xbox not configured")
     tokens = await get_tokens(refresh_token)
-    xuid = tokens.xuid
+
+    # Explicit ?xuid= wins; otherwise check every account that actually owns
+    # this game (usually one, but nothing stops two family members owning
+    # the same title under different Xbox accounts).
+    targets = (
+        [{"xuid": xuid, "display_name": None, "username": None}] if xuid
+        else (owners or [{"xuid": tokens.xuid, "display_name": None, "username": "(signed-in account; no owner found)"}])
+    )
+
     async with httpx.AsyncClient(timeout=30) as client:
         title_v1_resp = await client.get(
             f"{_ACH}/titles/{title_id}/achievements",
             params={"maxItems": 5},
             headers=_xbl_headers(tokens, contract="1"),
         )
-        user_v1_resp = await client.get(
-            f"{_ACH}/users/xuid({xuid})/achievements",
-            params={"titleId": title_id, "maxItems": 5},
-            headers=_xbl_headers(tokens, contract="1"),
-        )
-        user_v2_resp = await client.get(
-            f"{_ACH}/users/xuid({xuid})/achievements",
-            params={"titleId": title_id, "maxItems": 5},
-            headers=_xbl_headers(tokens, contract="2"),
-        )
         title_v2_resp = await client.get(
             f"{_ACH}/titles/{title_id}/achievements",
             params={"maxItems": 5},
             headers=_xbl_headers(tokens, contract="2"),
         )
+
+        per_account = []
+        for owner in targets:
+            user_v1_resp = await client.get(
+                f"{_ACH}/users/xuid({owner['xuid']})/achievements",
+                params={"titleId": title_id, "maxItems": 5},
+                headers=_xbl_headers(tokens, contract="1"),
+            )
+            user_v2_resp = await client.get(
+                f"{_ACH}/users/xuid({owner['xuid']})/achievements",
+                params={"titleId": title_id, "maxItems": 5},
+                headers=_xbl_headers(tokens, contract="2"),
+            )
+            per_account.append({
+                "xuid": owner["xuid"],
+                "account": owner["display_name"] or owner["username"],
+                "user_v1_status": user_v1_resp.status_code,
+                "user_v1_sample": user_v1_resp.json() if user_v1_resp.status_code == 200 else user_v1_resp.text,
+                "user_v2_status": user_v2_resp.status_code,
+                "user_v2_sample": user_v2_resp.json() if user_v2_resp.status_code == 200 else user_v2_resp.text,
+            })
+
     return {
         "game_id": game_id,
         "xbox_title_id": title_id,
+        "signed_in_xuid": tokens.xuid,
         "title_v1_status": title_v1_resp.status_code,
         "title_v1_sample": title_v1_resp.json() if title_v1_resp.status_code == 200 else title_v1_resp.text,
-        "user_v1_status": user_v1_resp.status_code,
-        "user_v1_sample": user_v1_resp.json() if user_v1_resp.status_code == 200 else user_v1_resp.text,
-        "user_v2_status": user_v2_resp.status_code,
-        "user_v2_sample": user_v2_resp.json() if user_v2_resp.status_code == 200 else user_v2_resp.text,
         "title_v2_status": title_v2_resp.status_code,
         "title_v2_sample": title_v2_resp.json() if title_v2_resp.status_code == 200 else title_v2_resp.text,
+        "accounts_checked": per_account,
     }
 
 
