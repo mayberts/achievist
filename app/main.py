@@ -2584,13 +2584,14 @@ async def xbox_360_debug(game_id: int, xuid: str | None = None, *, admin: dict =
     doesn't currently have a user_games row for this title).
     """
     from app.xbox_auth import get_tokens, load_refresh_token
-    from app.platforms.xbox import _xbl_headers, _ACH
+    from app.platforms.xbox import _xbl_headers, _ACH, _TITLEHUB
     pool = await db.get_pool()
     async with pool.connection() as conn:
-        row = await _fetchrow(conn, "SELECT platform_app_id FROM platform_games WHERE id = %s", game_id)
+        row = await _fetchrow(conn, "SELECT platform_app_id, name FROM platform_games WHERE id = %s", game_id)
         if not row:
             raise HTTPException(status_code=404, detail=f"Game {game_id} not found")
         title_id = row["platform_app_id"]
+        game_name = (row["name"] or "").strip().lower()
 
         owners = await _fetch(
             conn,
@@ -2639,6 +2640,36 @@ async def xbox_360_debug(game_id: int, xuid: str | None = None, *, admin: dict =
                 params={"titleId": title_id, "maxItems": 5},
                 headers=_xbl_headers(tokens, contract="2"),
             )
+
+            # The sync path deliberately keeps only one Xbox titleId per game
+            # *name* (titleHistory can list a console release and a separate
+            # re-listing — e.g. a backward-compatibility relist — as two
+            # different titleIds for what is visibly the same game), to
+            # avoid showing duplicate rows. That collapsing only decides
+            # which titleId's achievements get *fetched* — it never merges
+            # the two — so if real unlocks are split across both titleIds,
+            # whichever one loses the "best" comparison is invisible to the
+            # app forever, not just this sync. Surfacing every titleId under
+            # this name here is how to tell whether that's actually happening
+            # rather than guessing at a second sync-logic fix blind.
+            other_titles = []
+            titlehub_resp = await client.get(
+                f"{_TITLEHUB}/users/xuid({owner['xuid']})/titles/titleHistory/decoration/Achievement",
+                headers=_xbl_headers(tokens),
+            )
+            if titlehub_resp.status_code == 200:
+                for t in titlehub_resp.json().get("titles") or []:
+                    if (t.get("name") or "").strip().lower() != game_name:
+                        continue
+                    if str(t.get("titleId")) == title_id:
+                        continue
+                    ach = t.get("achievement") or {}
+                    other_titles.append({
+                        "titleId": t.get("titleId"),
+                        "currentAchievements": ach.get("currentAchievements"),
+                        "totalAchievements": ach.get("totalAchievements"),
+                    })
+
             per_account.append({
                 "xuid": owner["xuid"],
                 "account": owner["display_name"] or owner["username"],
@@ -2646,6 +2677,10 @@ async def xbox_360_debug(game_id: int, xuid: str | None = None, *, admin: dict =
                 "user_v1_sample": user_v1_resp.json() if user_v1_resp.status_code == 200 else user_v1_resp.text,
                 "user_v2_status": user_v2_resp.status_code,
                 "user_v2_sample": user_v2_resp.json() if user_v2_resp.status_code == 200 else user_v2_resp.text,
+                # Non-empty here means real achievements are likely split
+                # across two titleIds for this game and the sync's per-name
+                # "keep the best one" dedup is hiding the other set.
+                "other_titleids_same_name": other_titles,
             })
 
     return {
