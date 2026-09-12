@@ -331,8 +331,7 @@ async def get_game_comparison(conn, requesting_user_id: int, platform_game_id: i
     """
     game = await _fetchrow(
         conn,
-        "SELECT id, platform, platform_app_id, name, icon_url, sgdb_cover_url, guide_url "
-        "FROM platform_games WHERE id = %s",
+        "SELECT id, platform, name, icon_url, sgdb_cover_url, guide_url FROM platform_games WHERE id = %s",
         platform_game_id,
     )
     if not game:

@@ -139,13 +139,28 @@ class XboxPlatform(Platform):
                     conn, linked_id, pg_id, playtime_minutes, earned, total, last_played_at
                 )
 
-                if earned == 0 and total > 0:
-                    continue
+                # Both shortcuts below trust Xbox's titleHistory achievement
+                # summary (total/currentAchievements) to decide whether
+                # anything's worth re-checking. For legacy 360 titles that
+                # summary can be simply wrong — most dangerously, a
+                # too-low totalAchievements that never corrects itself. Once
+                # what we've locally stored reaches that (wrong) total, the
+                # "nothing changed" shortcut has no other signal telling it
+                # there's more to find, and would keep skipping forever even
+                # as real new unlocks come in — which looks exactly like "it
+                # synced once, and unlocks since then never show up." 360
+                # titles skip both shortcuts entirely and always ask the
+                # achievements endpoint directly; it's one bounded, paginated
+                # call, so the extra cost is small and paid only for the 360
+                # titles in the library.
+                if not is_360:
+                    if earned == 0 and total > 0:
+                        continue
 
-                # Skip if earned count unchanged and all achievements already stored
-                cached = earned_cache.get(title_id)
-                if cached and cached["earned"] == earned and cached["stored"] >= total > 0:
-                    continue
+                    # Skip if earned count unchanged and all achievements already stored
+                    cached = earned_cache.get(title_id)
+                    if cached and cached["earned"] == earned and cached["stored"] >= total > 0:
+                        continue
 
                 await asyncio.sleep(delay)
 
@@ -166,12 +181,31 @@ class XboxPlatform(Platform):
                             log.warning("Xbox Live rate limit hit")
                             raise RuntimeError("Xbox Live rate limit — try again later")
                         if ach_resp.status_code != 200:
+                            # This used to fail silently: no log line, and
+                            # whatever had been paged in so far (possibly
+                            # nothing at all) was then used below as though
+                            # it were the complete, correct list. A newly
+                            # unlocked 360 achievement that hadn't been paged
+                            # in yet would just never appear, with nothing
+                            # anywhere to explain why. Logging it, and
+                            # abandoning this title's update for this sync
+                            # rather than writing a partial or empty result,
+                            # matches how the non-360 branch below already
+                            # handles a failed fetch.
+                            log.warning(
+                                "360 achievements fetch failed for %s: HTTP %d",
+                                name, ach_resp.status_code,
+                            )
+                            earned_achievements = None
                             break
                         data = ach_resp.json()
                         earned_achievements.extend(data.get("achievements") or [])
                         continuation = (data.get("pagingInfo") or {}).get("continuationToken")
                         if not continuation:
                             break
+
+                    if earned_achievements is None:
+                        continue
 
                     earned_map = {
                         str(a.get("id")): a.get("timeUnlocked")
