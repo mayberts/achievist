@@ -103,6 +103,14 @@ ALTER TABLE platform_games ADD COLUMN IF NOT EXISTS igdb_id       BIGINT REFEREN
 ALTER TABLE platform_games ADD COLUMN IF NOT EXISTS store_id      TEXT;
 ALTER TABLE platform_games ADD COLUMN IF NOT EXISTS xbox_pfn      TEXT;
 ALTER TABLE platform_games ADD COLUMN IF NOT EXISTS sgdb_cover_url TEXT;
+-- Whether this is a legacy Xbox 360 title (Xbox titleHistory's
+-- achievement.sourceVersion == 1). NULL until the next sync populates it.
+-- Locked achievements never get a row at all for a 360 title (there's no
+-- "list everything, locked or not" call for the legacy API), unlike modern
+-- Xbox titles where a locked, numeric-id, date-less row is completely
+-- normal — so cleanup code that wants to safely act only on 360 titles
+-- needs this instead of guessing from a row's shape.
+ALTER TABLE platform_games ADD COLUMN IF NOT EXISTS is_360 BOOLEAN;
 -- When achievement-level TrueAchievements/TrueSteamAchievements links were
 -- last scraped for this game, so it's only re-fetched occasionally rather
 -- than on every request.

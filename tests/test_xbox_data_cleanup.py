@@ -4,10 +4,14 @@ Tests for the Xbox 360 achievement data-corruption cleanup.
 Covers three historically-introduced, unrelated bugs found while chasing a
 "strange date, no icons" report:
 
-1. Some now-removed version of the 360 sync stamped achievements it hadn't
-   actually confirmed as earned with SQL Server's DATETIME-minimum sentinel
-   (1753-01-01T00:00:00+00:00) and marked them unlocked anyway. Today's sync
-   never revisits those rows, so they'd sit there forever uncorrected.
+1. Some now-removed version of the 360 sync stamped achievements with SQL
+   Server's DATETIME-minimum sentinel (1753-01-01T00:00:00+00:00) instead of
+   a real unlock time. A numeric-id achievement row for a 360 title only
+   ever gets created when Xbox's own live API confirmed it earned (there's
+   no "list everything, locked or not" call for the legacy API), so the
+   corruption is confined to the date — the achievement itself was real.
+   cleanup_legacy_xbox_achievement_data only clears the bogus date and must
+   never touch `unlocked` itself.
 2. /api/exophase-import-icons used to attach every synthetic achievement row
    it created to an arbitrary ("LIMIT 1") Xbox linked_account rather than the
    one that actually owns the game.
@@ -16,6 +20,13 @@ Covers three historically-introduced, unrelated bugs found while chasing a
    with no icon) and once under a synthetic "exo-<slug>" id (has an icon,
    but never gets real unlock status). These must merge into a single row
    that's both correctly synced and has an icon.
+
+Also covers repair_wrongly_locked_xbox_360_achievements, which undoes the
+damage an earlier (buggy) version of the above cleanup did in production
+before the `unlocked`-preserving fix landed — it had reset those rows to
+locked, erasing real completion status. That repair can only safely act on
+titles platform_games.is_360 confirms as legacy 360 ones, since a locked,
+date-less, numeric-id achievement is completely normal for a modern title.
 """
 
 from datetime import datetime, timezone
@@ -39,47 +50,50 @@ async def _setup_game(db_conn, platform="xbox", title_id="555"):
     return user, linked_id, pg_id
 
 
-async def test_fake_1753_unlocks_are_cleared(db_conn):
+async def test_fake_1753_dates_are_cleared_but_unlock_status_is_preserved(db_conn):
     _, linked_id, pg_id = await _setup_game(db_conn, title_id="601")
-    ach_id = await db.upsert_achievement(db_conn, pg_id, "10", "Fake Unlock", None, None, None, None)
+    ach_id = await db.upsert_achievement(db_conn, pg_id, "10", "Real Achievement", None, None, None, None)
     await db.upsert_user_achievement(db_conn, linked_id, ach_id, True, SENTINEL)
     await db_conn.commit()
 
     counts = await db.cleanup_legacy_xbox_achievement_data(db_conn)
     await db_conn.commit()
 
-    assert counts["fake_unlocks_cleared"] == 1
+    assert counts["fake_dates_cleared"] == 1
 
     row = await db._fetchrow(
         db_conn,
         "SELECT unlocked, unlocked_at FROM user_achievements WHERE achievement_id = %s AND linked_account_id = %s",
         ach_id, linked_id,
     )
-    assert row["unlocked"] is False
+    # The achievement itself was real (a numeric-id row for a 360 title only
+    # ever gets created when Xbox's API confirmed it earned) — only the
+    # bogus date must go, not the completion status.
+    assert row["unlocked"] is True
     assert row["unlocked_at"] is None
 
 
-async def test_fake_unlocks_with_a_drifted_sentinel_time_are_also_cleared(db_conn):
+async def test_fake_dates_with_a_drifted_sentinel_time_are_also_cleared(db_conn):
     """The corrupting code built a naive (timezone-less) datetime for the
     1753 sentinel, so depending on the writing session's timezone the
     stored instant can drift from the exact UTC literal by several hours.
     Matching must catch nearby drift, not just the one exact instant."""
     _, linked_id, pg_id = await _setup_game(db_conn, title_id="607")
     drifted = datetime(1753, 1, 1, 5, 0, 0, tzinfo=timezone.utc)
-    ach_id = await db.upsert_achievement(db_conn, pg_id, "10", "Fake Unlock", None, None, None, None)
+    ach_id = await db.upsert_achievement(db_conn, pg_id, "10", "Real Achievement", None, None, None, None)
     await db.upsert_user_achievement(db_conn, linked_id, ach_id, True, drifted)
     await db_conn.commit()
 
     counts = await db.cleanup_legacy_xbox_achievement_data(db_conn)
     await db_conn.commit()
 
-    assert counts["fake_unlocks_cleared"] == 1
+    assert counts["fake_dates_cleared"] == 1
     row = await db._fetchrow(
         db_conn,
         "SELECT unlocked, unlocked_at FROM user_achievements WHERE achievement_id = %s AND linked_account_id = %s",
         ach_id, linked_id,
     )
-    assert row["unlocked"] is False
+    assert row["unlocked"] is True
     assert row["unlocked_at"] is None
 
 
@@ -93,7 +107,7 @@ async def test_real_unlocks_with_other_dates_are_untouched(db_conn):
     counts = await db.cleanup_legacy_xbox_achievement_data(db_conn)
     await db_conn.commit()
 
-    assert counts["fake_unlocks_cleared"] == 0
+    assert counts["fake_dates_cleared"] == 0
     row = await db._fetchrow(
         db_conn,
         "SELECT unlocked, unlocked_at FROM user_achievements WHERE achievement_id = %s AND linked_account_id = %s",
@@ -212,7 +226,7 @@ async def test_cleanup_is_idempotent(db_conn):
     await db_conn.commit()
 
     assert counts == {
-        "fake_unlocks_cleared": 0,
+        "fake_dates_cleared": 0,
         "duplicate_achievements_merged": 0,
         "misattributed_rows_removed": 0,
     }
@@ -255,3 +269,62 @@ async def test_exophase_import_creates_rows_for_every_real_owner_not_an_arbitrar
         pg_id,
     )
     assert {r["linked_account_id"] for r in rows} == {owner1, owner2}
+
+
+async def test_repair_restores_wrongly_locked_360_achievements(db_conn):
+    """Simulates the damage the pre-fix cleanup did in production: a real
+    360 achievement wrongly reset to locked. Restoring it requires
+    is_360=True to be set (normally populated by a live sync)."""
+    _, linked_id, pg_id = await _setup_game(db_conn, title_id="608")
+    await db_conn.execute("UPDATE platform_games SET is_360 = TRUE WHERE id = %s", (pg_id,))
+    ach_id = await db.upsert_achievement(db_conn, pg_id, "10", "Wrongly Locked", None, None, None, None)
+    await db.upsert_user_achievement(db_conn, linked_id, ach_id, False, None)
+    await db_conn.commit()
+
+    restored = await db.repair_wrongly_locked_xbox_360_achievements(db_conn)
+    await db_conn.commit()
+
+    assert restored == 1
+    row = await db._fetchrow(
+        db_conn,
+        "SELECT unlocked FROM user_achievements WHERE achievement_id = %s AND linked_account_id = %s",
+        ach_id, linked_id,
+    )
+    assert row["unlocked"] is True
+
+
+async def test_repair_leaves_modern_title_locked_achievements_alone(db_conn):
+    """A locked, date-less, numeric-id achievement is completely normal for
+    a modern (non-360) Xbox title — is_360 defaults to NULL/false, and the
+    repair must never touch it."""
+    _, linked_id, pg_id = await _setup_game(db_conn, title_id="609")
+    ach_id = await db.upsert_achievement(db_conn, pg_id, "10", "Never Played", None, None, None, None)
+    await db.upsert_user_achievement(db_conn, linked_id, ach_id, False, None)
+    await db_conn.commit()
+
+    restored = await db.repair_wrongly_locked_xbox_360_achievements(db_conn)
+    await db_conn.commit()
+
+    assert restored == 0
+    row = await db._fetchrow(
+        db_conn,
+        "SELECT unlocked FROM user_achievements WHERE achievement_id = %s AND linked_account_id = %s",
+        ach_id, linked_id,
+    )
+    assert row["unlocked"] is False
+
+
+async def test_repair_leaves_exo_rows_alone(db_conn):
+    """exo- rows are always legitimately locked until a real sync confirms
+    them (they carry no real unlock status by design) — never restore
+    those, even for a confirmed 360 title."""
+    _, linked_id, pg_id = await _setup_game(db_conn, title_id="610")
+    await db_conn.execute("UPDATE platform_games SET is_360 = TRUE WHERE id = %s", (pg_id,))
+    ach_id = await db.upsert_achievement(db_conn, pg_id, "exo-never-confirmed", "Never Confirmed", None, None, None, None)
+    await db.upsert_user_achievement(db_conn, linked_id, ach_id, False, None)
+    await db_conn.commit()
+
+    restored = await db.repair_wrongly_locked_xbox_360_achievements(db_conn)
+    await db_conn.commit()
+
+    assert restored == 0

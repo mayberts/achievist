@@ -378,6 +378,17 @@ async def run_sync(account_id: int | None = None, user_id: int | None = None) ->
         for account in accounts:
             await _sync_one_account(pool, account)
 
+        # Runs here (after a sync has had the chance to populate
+        # platform_games.is_360) rather than at boot, since it can only act
+        # safely on titles confirmed as legacy 360 — see the function's
+        # docstring for why "locked, numeric id, no date" alone isn't
+        # enough signal on its own.
+        async with pool.connection() as conn:
+            restored = await db.repair_wrongly_locked_xbox_360_achievements(conn)
+            await conn.commit()
+        if restored:
+            log.info("Xbox 360 achievement repair: restored %d wrongly-locked achievement(s)", restored)
+
         _sync_progress["running"] = False
         asyncio.create_task(_enrich_hltb())
         asyncio.create_task(_enrich_igdb())

@@ -133,7 +133,7 @@ class XboxPlatform(Platform):
 
                 pg_id = await db.upsert_platform_game(
                     conn, "xbox", title_id, name, icon_url, total,
-                    store_id=store_id, xbox_pfn=pfn,
+                    store_id=store_id, xbox_pfn=pfn, is_360=is_360,
                 )
                 await db.upsert_user_game(
                     conn, linked_id, pg_id, playtime_minutes, earned, total, last_played_at
@@ -231,7 +231,7 @@ class XboxPlatform(Platform):
                     total = len(achievements)
                     await db.upsert_platform_game(
                         conn, "xbox", title_id, name, icon_url, total,
-                        store_id=store_id, xbox_pfn=pfn,
+                        store_id=store_id, xbox_pfn=pfn, is_360=is_360,
                     )
                     await db.upsert_user_game(conn, linked_id, pg_id, 0, earned, total, last_played_at)
 

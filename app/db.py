@@ -615,21 +615,23 @@ async def account_exists(conn, user_id: int, platform: str) -> bool:
 async def upsert_platform_game(conn, platform: str, platform_app_id: str, name: str,
                                 icon_url: str | None, total_achievements: int,
                                 store_id: str | None = None,
-                                xbox_pfn: str | None = None) -> int:
+                                xbox_pfn: str | None = None,
+                                is_360: bool | None = None) -> int:
     row = await _fetchrow(
         conn,
         """
-        INSERT INTO platform_games (platform, platform_app_id, name, icon_url, total_achievements, store_id, xbox_pfn)
-        VALUES (%s, %s, %s, %s, %s, %s, %s)
+        INSERT INTO platform_games (platform, platform_app_id, name, icon_url, total_achievements, store_id, xbox_pfn, is_360)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
         ON CONFLICT (platform, platform_app_id) DO UPDATE
             SET name = EXCLUDED.name,
                 icon_url = EXCLUDED.icon_url,
                 total_achievements = EXCLUDED.total_achievements,
                 store_id = COALESCE(platform_games.store_id, EXCLUDED.store_id),
-                xbox_pfn = COALESCE(platform_games.xbox_pfn, EXCLUDED.xbox_pfn)
+                xbox_pfn = COALESCE(platform_games.xbox_pfn, EXCLUDED.xbox_pfn),
+                is_360 = COALESCE(EXCLUDED.is_360, platform_games.is_360)
         RETURNING id
         """,
-        platform, platform_app_id, name, icon_url, total_achievements, store_id, xbox_pfn,
+        platform, platform_app_id, name, icon_url, total_achievements, store_id, xbox_pfn, is_360,
     )
     return row["id"]
 
@@ -895,13 +897,19 @@ async def cleanup_legacy_xbox_achievement_data(conn) -> dict[str, int]:
     found while chasing a "360 achievements not syncing" report, none of
     them in code still running today:
 
-    1. Some now-gone version of the 360 sync — from before it was rewritten
-       to only ever trust the achievements Xbox's live API confirms as
-       earned — imported the *full* locked+unlocked list from what was then
-       a working title-level endpoint, and had a bug marking every
-       achievement unlocked regardless of truth, stamped with a value at or
-       near 1753-01-01T00:00:00: SQL Server's DATETIME minimum, a classic
-       "no real date" placeholder. That value was written by code that
+    1. Some now-gone version of the 360 sync stamped achievements with a
+       value at or near 1753-01-01T00:00:00 — SQL Server's DATETIME
+       minimum, a classic "no real date" placeholder — instead of either
+       the real unlock time or no time at all. Today's 360 sync only ever
+       creates a row for an achievement Xbox's live API confirms as
+       earned in the first place (the legacy v1 API has no "list every
+       achievement, locked or not" call), so a numeric-id achievement row
+       existing at all is itself evidence the unlock was real; the
+       corruption is confined to the *date*, not the completion status.
+       An earlier version of this cleanup wrongly treated the whole row as
+       fabricated and reset it to locked — that was backwards, and erased
+       real progress. This only ever clears the placeholder date now,
+       leaving `unlocked` untouched. That value was written by code that
        built a naive (timezone-less) datetime — psycopg/Postgres attaches
        whatever the writing session's timezone happened to be rather than
        assuming UTC, so the exact stored instant can drift by several hours
@@ -936,7 +944,7 @@ async def cleanup_legacy_xbox_achievement_data(conn) -> dict[str, int]:
     fake_unlocks = await conn.execute(
         """
         UPDATE user_achievements ua
-        SET unlocked = FALSE, unlocked_at = NULL
+        SET unlocked_at = NULL
         FROM achievements a
         JOIN platform_games pg ON pg.id = a.platform_game_id
         WHERE ua.achievement_id = a.id
@@ -1010,10 +1018,51 @@ async def cleanup_legacy_xbox_achievement_data(conn) -> dict[str, int]:
     )
 
     return {
-        "fake_unlocks_cleared": fake_unlocks.rowcount,
+        "fake_dates_cleared": fake_unlocks.rowcount,
         "duplicate_achievements_merged": merged.rowcount,
         "misattributed_rows_removed": reattach.rowcount,
     }
+
+
+async def repair_wrongly_locked_xbox_360_achievements(conn) -> int:
+    """
+    One-time (but idempotent) repair for a mistake in an earlier version of
+    cleanup_legacy_xbox_achievement_data: it treated the 1753-dated rows as
+    entirely fabricated and reset them to locked, when in fact only the
+    *date* was corrupted — a numeric-id achievement row for a 360 title only
+    ever gets created when Xbox's live API confirmed it as earned (the
+    legacy API has no "list everything, locked or not" call), so the row
+    existing at all is itself evidence the unlock was real.
+
+    Undoing that blindly is unsafe: a locked, date-less, numeric-id
+    achievement is completely normal for a *modern* Xbox title (contract v2
+    returns the full catalog, locked included), so "numeric id + locked +
+    no date" alone can't tell a wrongly-reset 360 achievement apart from a
+    real "never played it" one. Only act where platform_games.is_360 is
+    confirmed true by a live sync — for those titles specifically, a locked
+    numeric-id row could only ever have come from this mistake.
+
+    Call this after a sync has had a chance to populate is_360 (it's NULL
+    until then), not at boot before any sync has run — a title not yet
+    resynced under the new code is simply left alone until it is.
+
+    Returns the number of achievements restored, for the caller to log.
+    """
+    restored = await conn.execute(
+        """
+        UPDATE user_achievements ua
+        SET unlocked = TRUE
+        FROM achievements a
+        JOIN platform_games pg ON pg.id = a.platform_game_id
+        WHERE ua.achievement_id = a.id
+          AND pg.platform = 'xbox'
+          AND pg.is_360 = TRUE
+          AND a.platform_ach_id !~ '^exo-'
+          AND ua.unlocked = FALSE
+          AND ua.unlocked_at IS NULL
+        """,
+    )
+    return restored.rowcount
 
 
 async def get_profile(conn) -> dict:
