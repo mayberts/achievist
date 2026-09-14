@@ -899,11 +899,20 @@ async def cleanup_legacy_xbox_achievement_data(conn) -> dict[str, int]:
        to only ever trust the achievements Xbox's live API confirms as
        earned — imported the *full* locked+unlocked list from what was then
        a working title-level endpoint, and had a bug marking every
-       achievement unlocked regardless of truth, stamped with
-       1753-01-01T00:00:00+00:00: SQL Server's DATETIME minimum, a classic
-       "no real date" placeholder. Today's sync never revisits achievements
-       outside the earned set for 360 titles, so it never got the chance to
-       correct these — they would have sat there forever.
+       achievement unlocked regardless of truth, stamped with a value at or
+       near 1753-01-01T00:00:00: SQL Server's DATETIME minimum, a classic
+       "no real date" placeholder. That value was written by code that
+       built a naive (timezone-less) datetime — psycopg/Postgres attaches
+       whatever the writing session's timezone happened to be rather than
+       assuming UTC, so the exact stored instant can drift by several hours
+       from one deployment or historical run to another; matching only the
+       one literal UTC instant silently missed rows written under a
+       different session timezone. Matched here by a wide "obviously
+       centuries before any Xbox existed" threshold instead of an exact
+       equality, so drift like that can't hide a corrupted row. Today's
+       sync never revisits achievements outside the earned set for 360
+       titles, so it never got the chance to correct these — they would
+       have sat there forever.
 
     2. Xbox's public API has no "list every achievement, locked or not" call
        for legacy titles, so a separate Exophase-backed importer
@@ -932,7 +941,7 @@ async def cleanup_legacy_xbox_achievement_data(conn) -> dict[str, int]:
         JOIN platform_games pg ON pg.id = a.platform_game_id
         WHERE ua.achievement_id = a.id
           AND pg.platform = 'xbox'
-          AND ua.unlocked_at = '1753-01-01T00:00:00+00:00'::timestamptz
+          AND ua.unlocked_at < '1900-01-01T00:00:00+00:00'::timestamptz
         """,
     )
 
