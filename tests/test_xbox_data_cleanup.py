@@ -59,6 +59,30 @@ async def test_fake_1753_unlocks_are_cleared(db_conn):
     assert row["unlocked_at"] is None
 
 
+async def test_fake_unlocks_with_a_drifted_sentinel_time_are_also_cleared(db_conn):
+    """The corrupting code built a naive (timezone-less) datetime for the
+    1753 sentinel, so depending on the writing session's timezone the
+    stored instant can drift from the exact UTC literal by several hours.
+    Matching must catch nearby drift, not just the one exact instant."""
+    _, linked_id, pg_id = await _setup_game(db_conn, title_id="607")
+    drifted = datetime(1753, 1, 1, 5, 0, 0, tzinfo=timezone.utc)
+    ach_id = await db.upsert_achievement(db_conn, pg_id, "10", "Fake Unlock", None, None, None, None)
+    await db.upsert_user_achievement(db_conn, linked_id, ach_id, True, drifted)
+    await db_conn.commit()
+
+    counts = await db.cleanup_legacy_xbox_achievement_data(db_conn)
+    await db_conn.commit()
+
+    assert counts["fake_unlocks_cleared"] == 1
+    row = await db._fetchrow(
+        db_conn,
+        "SELECT unlocked, unlocked_at FROM user_achievements WHERE achievement_id = %s AND linked_account_id = %s",
+        ach_id, linked_id,
+    )
+    assert row["unlocked"] is False
+    assert row["unlocked_at"] is None
+
+
 async def test_real_unlocks_with_other_dates_are_untouched(db_conn):
     _, linked_id, pg_id = await _setup_game(db_conn, title_id="602")
     real_time = datetime(2024, 1, 1, tzinfo=timezone.utc)
