@@ -889,6 +889,124 @@ async def upsert_user_achievement(conn, linked_account_id: int, achievement_id: 
     )
 
 
+async def cleanup_legacy_xbox_achievement_data(conn) -> dict[str, int]:
+    """
+    One-time (but idempotent — safe to run every boot) repair for three bugs
+    found while chasing a "360 achievements not syncing" report, none of
+    them in code still running today:
+
+    1. Some now-gone version of the 360 sync — from before it was rewritten
+       to only ever trust the achievements Xbox's live API confirms as
+       earned — imported the *full* locked+unlocked list from what was then
+       a working title-level endpoint, and had a bug marking every
+       achievement unlocked regardless of truth, stamped with
+       1753-01-01T00:00:00+00:00: SQL Server's DATETIME minimum, a classic
+       "no real date" placeholder. Today's sync never revisits achievements
+       outside the earned set for 360 titles, so it never got the chance to
+       correct these — they would have sat there forever.
+
+    2. Xbox's public API has no "list every achievement, locked or not" call
+       for legacy titles, so a separate Exophase-backed importer
+       (POST /api/exophase-import-icons) exists to backfill the full
+       catalog + icons. Until just now it attached the rows it created to
+       "the first xbox linked_account, whichever that is" rather than the
+       account that actually owns the game — silently correct only for a
+       single-Xbox-account household. In a multi-account one, this
+       backfilled catalog was invisible to the account it was meant for.
+
+    3. Because of (1), a game could carry the *same* achievement twice: once
+       under Xbox's own numeric id (the one live syncs actually keep
+       correct, but historically with no icon — Xbox's legacy API doesn't
+       provide one) and once under a synthetic "exo-<slug>" id from (2)
+       (has an icon, but nothing ever writes real unlock status to it).
+       Merged here rather than just picking one, so the surviving row is
+       both correctly kept up to date *and* has an icon.
+
+    Returns counts for each step, for the caller to log.
+    """
+    fake_unlocks = await conn.execute(
+        """
+        UPDATE user_achievements ua
+        SET unlocked = FALSE, unlocked_at = NULL
+        FROM achievements a
+        JOIN platform_games pg ON pg.id = a.platform_game_id
+        WHERE ua.achievement_id = a.id
+          AND pg.platform = 'xbox'
+          AND ua.unlocked_at = '1753-01-01T00:00:00+00:00'::timestamptz
+        """,
+    )
+
+    # Merge: keep the numeric/native row (only kind a live sync ever
+    # revisits), take the exo- row's icon if the numeric one doesn't have
+    # one yet, then drop the exo- row. DISTINCT ON keeps this 1:1 even in
+    # the unlikely case two numeric achievements normalize to the same name.
+    await conn.execute(
+        """
+        WITH pairs AS (
+            SELECT DISTINCT ON (exo.id)
+                num.id AS keep_id, exo.id AS drop_id, exo.icon_url AS drop_icon
+            FROM achievements exo
+            JOIN achievements num
+                ON num.platform_game_id = exo.platform_game_id
+               AND regexp_replace(lower(num.name), '[^a-z0-9]+', '', 'g')
+                 = regexp_replace(lower(exo.name), '[^a-z0-9]+', '', 'g')
+               AND num.platform_ach_id !~ '^exo-'
+            JOIN platform_games pg ON pg.id = exo.platform_game_id
+            WHERE pg.platform = 'xbox' AND exo.platform_ach_id LIKE 'exo-%%'
+            ORDER BY exo.id, num.id
+        )
+        UPDATE achievements SET icon_url = pairs.drop_icon
+        FROM pairs
+        WHERE achievements.id = pairs.keep_id
+          AND achievements.icon_url IS NULL
+          AND pairs.drop_icon IS NOT NULL
+        """,
+    )
+    merged = await conn.execute(
+        """
+        WITH pairs AS (
+            SELECT DISTINCT ON (exo.id) exo.id AS drop_id
+            FROM achievements exo
+            JOIN achievements num
+                ON num.platform_game_id = exo.platform_game_id
+               AND regexp_replace(lower(num.name), '[^a-z0-9]+', '', 'g')
+                 = regexp_replace(lower(exo.name), '[^a-z0-9]+', '', 'g')
+               AND num.platform_ach_id !~ '^exo-'
+            JOIN platform_games pg ON pg.id = exo.platform_game_id
+            WHERE pg.platform = 'xbox' AND exo.platform_ach_id LIKE 'exo-%%'
+            ORDER BY exo.id, num.id
+        )
+        DELETE FROM achievements WHERE id IN (SELECT drop_id FROM pairs)
+        """,
+    )
+
+    # Any exo- row still attached to an account that never actually owned
+    # the game (bug 2, before today's fix). These only ever carry
+    # unlocked=NULL placeholders — nothing real is lost by dropping them —
+    # and re-running the icon import now attaches fresh ones correctly.
+    reattach = await conn.execute(
+        """
+        DELETE FROM user_achievements ua
+        USING achievements a, platform_games pg
+        WHERE ua.achievement_id = a.id
+          AND a.platform_game_id = pg.id
+          AND pg.platform = 'xbox'
+          AND a.platform_ach_id LIKE 'exo-%%'
+          AND NOT EXISTS (
+              SELECT 1 FROM user_games ug
+              WHERE ug.linked_account_id = ua.linked_account_id
+                AND ug.platform_game_id = pg.id
+          )
+        """,
+    )
+
+    return {
+        "fake_unlocks_cleared": fake_unlocks.rowcount,
+        "duplicate_achievements_merged": merged.rowcount,
+        "misattributed_rows_removed": reattach.rowcount,
+    }
+
+
 async def get_profile(conn) -> dict:
     row = await _fetchrow(conn, "SELECT display_name, avatar_url FROM profile WHERE id = 1")
     return dict(row) if row else {"display_name": None, "avatar_url": None}
