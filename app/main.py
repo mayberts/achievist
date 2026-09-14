@@ -421,6 +421,14 @@ async def lifespan(app: FastAPI):
                         )
                         log.info("Seeded %s account from environment", seed["platform"])
 
+    # One-time (but idempotent) repair for legacy Xbox 360 achievement data
+    # corruption — see db.cleanup_legacy_xbox_achievement_data for details.
+    async with pool.connection() as conn:
+        cleanup_counts = await db.cleanup_legacy_xbox_achievement_data(conn)
+        await conn.commit()
+    if any(cleanup_counts.values()):
+        log.info("Xbox 360 achievement data cleanup: %s", cleanup_counts)
+
     asyncio.create_task(run_sync())
     asyncio.create_task(_enrich_hltb())
     asyncio.create_task(_enrich_igdb())
@@ -2044,12 +2052,24 @@ async def exophase_import_icons(payload: dict, admin: dict = Depends(require_adm
         else:
             pg_id = None
 
-        # Get linked_account_id for xbox (to create user_achievement rows)
-        la_row = await _fetchrow(
-            conn,
-            "SELECT id FROM linked_accounts WHERE platform = 'xbox' LIMIT 1",
-        )
-        linked_id = la_row["id"] if la_row else None
+        # The account(s) that actually own this game, not just any xbox
+        # account. This used to be "SELECT ... LIMIT 1" — the first xbox
+        # linked_account by whatever order Postgres felt like, regardless
+        # of whether it had ever played this game. In a household with more
+        # than one Xbox account that silently attached every newly-created
+        # achievement row to the wrong person, whose stats then showed it
+        # forever "locked, no data" no matter what the right account had
+        # actually earned. A game can also legitimately be owned by more
+        # than one family member, so this creates a row for every real owner.
+        owner_ids = [
+            r["linked_account_id"] for r in await _fetch(
+                conn,
+                "SELECT DISTINCT ug.linked_account_id FROM user_games ug "
+                "JOIN linked_accounts la ON la.id = ug.linked_account_id "
+                "WHERE ug.platform_game_id = %s AND la.platform = 'xbox'",
+                pg_id,
+            )
+        ] if pg_id else []
 
     async with pool.connection() as conn:
         existing_slugs = {_to_slug(ach["name"]) for ach in rows}
@@ -2063,7 +2083,7 @@ async def exophase_import_icons(payload: dict, admin: dict = Depends(require_adm
                 updated += 1
 
         # Create achievements that don't exist in DB yet
-        if pg_id and linked_id:
+        if pg_id and owner_ids:
             for name, icon_url in icons.items():
                 slug = _to_slug(name)
                 if slug not in existing_slugs:
@@ -2071,7 +2091,8 @@ async def exophase_import_icons(payload: dict, admin: dict = Depends(require_adm
                     ach_id = await db.upsert_achievement(
                         conn, pg_id, synth_id, name, None, icon_url, None, None
                     )
-                    await db.upsert_user_achievement(conn, linked_id, ach_id, False, None)
+                    for linked_id in owner_ids:
+                        await db.upsert_user_achievement(conn, linked_id, ach_id, False, None)
                     created += 1
 
     return {"game_name": game_name, "achievements_found": len(rows), "icons_updated": updated, "achievements_created": created}
