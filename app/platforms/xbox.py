@@ -23,6 +23,31 @@ def _xbl_headers(tokens: XboxTokens, contract: str = "2") -> dict:
     }
 
 
+def _parse_unlock_time(time_str: str | None) -> datetime | None:
+    """
+    Xbox's own achievements API uses more than one "no real timestamp on
+    file" placeholder for old unlocks: 0001-01-01 (the .NET DateTime
+    minimum) is the documented one, but legacy 360 titles have also been
+    observed returning 1753-01-01 (SQL Server's DATETIME minimum) — almost
+    certainly the same kind of placeholder leaking out of an older part of
+    Microsoft's own backend. Neither is a real unlock time, and unlike a
+    one-off data-repair migration this runs on every sync, so a title that
+    keeps reporting one of these would otherwise have its date re-corrupted
+    right back in on every single resync. Treated the same as no time at
+    all: any date implausibly long before the Xbox 360 existed (year 1900)
+    is dropped rather than stored.
+    """
+    if not time_str:
+        return None
+    try:
+        parsed = datetime.fromisoformat(time_str.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.year < 1900:
+        return None
+    return parsed
+
+
 class XboxPlatform(Platform):
     KEY = "xbox"
     LABEL = "Xbox"
@@ -274,26 +299,13 @@ class XboxPlatform(Platform):
                     if is_360:
                         time_str = earned_map.get(ach_id)
                         unlocked = time_str is not None
-                        unlocked_at = None
-                        if time_str and time_str not in ("", "0001-01-01T00:00:00.0000000Z", "0001-01-01T00:00:00Z"):
-                            try:
-                                unlocked_at = datetime.fromisoformat(
-                                    time_str.replace("Z", "+00:00")
-                                )
-                            except ValueError:
-                                pass
+                        unlocked_at = _parse_unlock_time(time_str)
                     else:
                         unlocked = ach.get("progressState") == "Achieved"
                         unlocked_at = None
                         if unlocked:
                             time_str = (ach.get("progression") or {}).get("timeUnlocked")
-                            if time_str and time_str not in ("", "0001-01-01T00:00:00.0000000Z", "0001-01-01T00:00:00Z"):
-                                try:
-                                    unlocked_at = datetime.fromisoformat(
-                                        time_str.replace("Z", "+00:00")
-                                    )
-                                except ValueError:
-                                    pass
+                            unlocked_at = _parse_unlock_time(time_str)
 
                     db_ach_id = await db.upsert_achievement(
                         conn, pg_id, ach_id, ach_name, description, icon, points, rarity_pct

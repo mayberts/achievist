@@ -223,3 +223,54 @@ async def test_a_later_successful_sync_picks_up_the_new_unlock(monkeypatch, db_c
     )
     assert {r["platform_ach_id"] for r in rows} == {"1", "2"}
     assert all(r["unlocked"] for r in rows)
+
+
+async def test_a_1753_placeholder_from_xbox_itself_is_stored_as_unlocked_with_no_date(monkeypatch, db_conn):
+    """Xbox's own legacy achievements API has been observed returning
+    1753-01-01 (SQL Server's DATETIME minimum) as a "no real timestamp on
+    file" placeholder for old 360 unlocks — the same kind of placeholder as
+    the documented 0001-01-01 one, just from an older part of Microsoft's
+    backend. This isn't Achievist-side data corruption to clean up after
+    the fact: it comes from Xbox's API on every sync, so if sync doesn't
+    filter it at the source, a one-time repair migration gets silently
+    undone by the very next sync. The achievement is still genuinely
+    earned (it's in the earned list at all only because Xbox confirmed it),
+    so it must be stored unlocked, just with no fabricated date."""
+    from app import auth
+
+    user = await db.create_user(db_conn, "p3", auth.hash_password("password1234"), is_admin=True)
+    account = {"user_id": user["id"], "external_id": "xbox", "credentials": {}}
+    platform = XboxPlatform()
+
+    real_async_client = httpx.AsyncClient
+
+    async def fake_get_tokens(refresh_token):
+        return XboxTokens(xsts_token="t", user_hash="h", xuid=XUID)
+
+    monkeypatch.setattr("app.xbox_auth.get_tokens", fake_get_tokens)
+    from app import config
+    monkeypatch.setattr(config, "XBOX_REFRESH_TOKEN", "fake-refresh-token")
+
+    monkeypatch.setattr(
+        httpx, "AsyncClient",
+        lambda **kw: real_async_client(
+            transport=httpx.MockTransport(_handler_factory(200, {
+                "achievements": [{"id": "1", "name": "Old Unlock", "gamerscore": 100,
+                                   "timeUnlocked": "1753-01-01T00:00:00.0000000Z"}],
+                "pagingInfo": {},
+            }))
+        ),
+    )
+    await platform.sync(account, db_conn)
+    await db_conn.commit()
+
+    row = await db._fetchrow(
+        db_conn,
+        "SELECT ua.unlocked, ua.unlocked_at FROM achievements a "
+        "JOIN platform_games pg ON pg.id = a.platform_game_id "
+        "JOIN user_achievements ua ON ua.achievement_id = a.id "
+        "WHERE pg.platform_app_id = %s AND a.platform_ach_id = '1'",
+        TITLE_ID,
+    )
+    assert row["unlocked"] is True
+    assert row["unlocked_at"] is None
