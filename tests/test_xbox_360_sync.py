@@ -274,3 +274,46 @@ async def test_a_1753_placeholder_from_xbox_itself_is_stored_as_unlocked_with_no
     )
     assert row["unlocked"] is True
     assert row["unlocked_at"] is None
+
+
+async def test_360_achievement_icon_is_built_from_title_and_image_ids(monkeypatch, db_conn):
+    """Legacy 360 achievements only ever carry a numeric imageId, not a
+    usable URL — verified directly against a real deployment: two
+    different imageIds for the same title each resolved to a distinct,
+    correct icon at http://image.xboxlive.com/global/t.<title hex>/ach/0/<image hex>."""
+    from app import auth
+
+    user = await db.create_user(db_conn, "p4", auth.hash_password("password1234"), is_admin=True)
+    account = {"user_id": user["id"], "external_id": "xbox", "credentials": {}}
+    platform = XboxPlatform()
+
+    real_async_client = httpx.AsyncClient
+
+    async def fake_get_tokens(refresh_token):
+        return XboxTokens(xsts_token="t", user_hash="h", xuid=XUID)
+
+    monkeypatch.setattr("app.xbox_auth.get_tokens", fake_get_tokens)
+    from app import config
+    monkeypatch.setattr(config, "XBOX_REFRESH_TOKEN", "fake-refresh-token")
+
+    monkeypatch.setattr(
+        httpx, "AsyncClient",
+        lambda **kw: real_async_client(
+            transport=httpx.MockTransport(_handler_factory(200, {
+                "achievements": [{"id": "1", "name": "Easy Tour Champ", "gamerscore": 10,
+                                   "imageId": 36, "timeUnlocked": "2024-01-01T00:00:00Z"}],
+                "pagingInfo": {},
+            }))
+        ),
+    )
+    await platform.sync(account, db_conn)
+    await db_conn.commit()
+
+    row = await db._fetchrow(
+        db_conn,
+        "SELECT a.icon_url FROM achievements a "
+        "JOIN platform_games pg ON pg.id = a.platform_game_id "
+        "WHERE pg.platform_app_id = %s AND a.platform_ach_id = '1'",
+        TITLE_ID,
+    )
+    assert row["icon_url"] == f"http://image.xboxlive.com/global/t.{int(TITLE_ID):x}/ach/0/24"

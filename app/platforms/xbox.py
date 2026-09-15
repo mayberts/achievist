@@ -48,6 +48,24 @@ def _parse_unlock_time(time_str: str | None) -> datetime | None:
     return parsed
 
 
+def _legacy_icon_url(title_id: str, image_id: int) -> str | None:
+    """
+    Legacy 360 achievements only ever carry a numeric `imageId` in Xbox's
+    v1 API response — no usable URL, unlike modern titles' `mediaAssets`.
+    The icon is served from a CDN path built from the title and image ids
+    in hex: http://image.xboxlive.com/global/t.<titleId hex>/ach/0/<imageId hex>.
+    Verified directly against a real deployment's data (two different
+    imageIds for the same title each resolved to a distinct, correct
+    achievement icon) — not just inferred from third-party docs, since
+    those turned out to describe an unrelated convenience API's own added
+    fields, not Xbox's actual response shape.
+    """
+    try:
+        return f"http://image.xboxlive.com/global/t.{int(title_id):x}/ach/0/{int(image_id):x}"
+    except (TypeError, ValueError):
+        return None
+
+
 class XboxPlatform(Platform):
     KEY = "xbox"
     LABEL = "Xbox"
@@ -267,7 +285,11 @@ class XboxPlatform(Platform):
                     description = ach.get("description") or ach.get("lockedDescription")
 
                     icon = None
-                    if not is_360:
+                    if is_360:
+                        image_id = ach.get("imageId")
+                        if image_id:
+                            icon = _legacy_icon_url(title_id, image_id)
+                    else:
                         for media in ach.get("mediaAssets") or []:
                             if media.get("type") == "Icon":
                                 icon = media.get("url")
