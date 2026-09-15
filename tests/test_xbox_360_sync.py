@@ -280,7 +280,10 @@ async def test_360_achievement_icon_is_built_from_title_and_image_ids(monkeypatc
     """Legacy 360 achievements only ever carry a numeric imageId, not a
     usable URL — verified directly against a real deployment: two
     different imageIds for the same title each resolved to a distinct,
-    correct icon at http://image.xboxlive.com/global/t.<title hex>/ach/0/<image hex>."""
+    correct icon at .../global/t.<title hex>/ach/0/<image hex>. Uses the
+    image-ssl.xboxlive.com host specifically — the plain image.xboxlive.com
+    one serves the same path but with an untrusted cert, which silently
+    breaks a background <img> load on the app's HTTPS pages."""
     from app import auth
 
     user = await db.create_user(db_conn, "p4", auth.hash_password("password1234"), is_admin=True)
@@ -316,4 +319,4 @@ async def test_360_achievement_icon_is_built_from_title_and_image_ids(monkeypatc
         "WHERE pg.platform_app_id = %s AND a.platform_ach_id = '1'",
         TITLE_ID,
     )
-    assert row["icon_url"] == f"http://image.xboxlive.com/global/t.{int(TITLE_ID):x}/ach/0/24"
+    assert row["icon_url"] == f"https://image-ssl.xboxlive.com/global/t.{int(TITLE_ID):x}/ach/0/24"

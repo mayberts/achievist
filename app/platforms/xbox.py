@@ -53,15 +53,23 @@ def _legacy_icon_url(title_id: str, image_id: int) -> str | None:
     Legacy 360 achievements only ever carry a numeric `imageId` in Xbox's
     v1 API response — no usable URL, unlike modern titles' `mediaAssets`.
     The icon is served from a CDN path built from the title and image ids
-    in hex: http://image.xboxlive.com/global/t.<titleId hex>/ach/0/<imageId hex>.
-    Verified directly against a real deployment's data (two different
-    imageIds for the same title each resolved to a distinct, correct
-    achievement icon) — not just inferred from third-party docs, since
-    those turned out to describe an unrelated convenience API's own added
-    fields, not Xbox's actual response shape.
+    in hex: .../global/t.<titleId hex>/ach/0/<imageId hex>. Verified
+    directly against a real deployment's data (two different imageIds for
+    the same title each resolved to a distinct, correct achievement icon)
+    — not just inferred from third-party docs, since those turned out to
+    describe an unrelated convenience API's own added fields, not Xbox's
+    actual response shape.
+
+    Uses the image-ssl.xboxlive.com host, not the plain image.xboxlive.com
+    one: the achievements page is served over HTTPS, and image.xboxlive.com
+    (verified against the real deployment) presents an untrusted cert —
+    fine for a browser tab where a person can click through the warning,
+    but a background <img> load can't prompt for that and just silently
+    fails, which is exactly what happened the first time this shipped.
+    image-ssl.xboxlive.com serves the identical path with a valid cert.
     """
     try:
-        return f"http://image.xboxlive.com/global/t.{int(title_id):x}/ach/0/{int(image_id):x}"
+        return f"https://image-ssl.xboxlive.com/global/t.{int(title_id):x}/ach/0/{int(image_id):x}"
     except (TypeError, ValueError):
         return None
 
