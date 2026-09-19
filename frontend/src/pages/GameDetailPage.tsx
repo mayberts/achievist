@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
-import { ArrowLeft, Trophy, Clock, Calendar, ExternalLink, Lock, ImageUp, Search, RefreshCw } from "lucide-react";
+import { ArrowLeft, Trophy, Clock, Calendar, ExternalLink, Lock, ImageUp, Search, RefreshCw, DownloadCloud } from "lucide-react";
 import { api } from "../api";
 import type { Achievement, GameDetail } from "../types";
 import { fmtPlaytime, fmtDate, fmtNum, fmtHours } from "../lib/format";
@@ -9,6 +9,7 @@ import { PLATFORM_META } from "../lib/platforms";
 import { RARITY_TIER_CLASS, RARITY_TIER_HEX, rarityTier } from "../lib/rarity";
 import { gameDirectUrl, guideSearchUrl } from "../lib/guideLink";
 import { ChangeCoverModal } from "../components/ChangeCoverModal";
+import { useAuth } from "../lib/auth";
 
 function banner(g: GameDetail): string | null {
   return g.sgdb_cover_url || g.igdb_cover_url || g.icon_url || null;
@@ -30,6 +31,7 @@ export function GameDetailPage() {
   const gameId = Number(id);
   const navigate = useNavigate();
   const location = useLocation();
+  const { user } = useAuth();
   const [game, setGame] = useState<GameDetail | null>(null);
   const [achs, setAchs] = useState<Achievement[] | null>(null);
   const [changingCover, setChangingCover] = useState(false);
@@ -39,6 +41,7 @@ export function GameDetailPage() {
   const [status, setStatus] = useState<StatusFilter>("all");
   const [sort, setSort] = useState<SortKey>("default");
   const [refreshingGuides, setRefreshingGuides] = useState(false);
+  const [importingCatalog, setImportingCatalog] = useState(false);
 
   useEffect(() => {
     setGame(null);
@@ -62,6 +65,39 @@ export function GameDetailPage() {
       /* best-effort — leave whatever links were already there */
     } finally {
       setRefreshingGuides(false);
+    }
+  }
+
+  async function importExophaseCatalog() {
+    setImportingCatalog(true);
+    try {
+      const result = await api.importExophaseCatalog(gameId);
+      if (result.error) {
+        const altTitle = window.prompt(
+          `${result.error}\n\nEnter the game's exact title as listed on exophase.com, or cancel to give up:`,
+        );
+        if (altTitle) {
+          const retry = await api.importExophaseCatalog(gameId, altTitle);
+          if (retry.error) {
+            window.alert(retry.error);
+          } else {
+            window.alert(`Imported ${retry.achievements_created} achievement(s) from "${retry.game_name}".`);
+          }
+        }
+      } else {
+        window.alert(
+          result.achievements_created
+            ? `Imported ${result.achievements_created} achievement(s) from "${result.game_name}".`
+            : `Found ${result.awards_found} achievement(s) on Exophase — all already synced, nothing new to add.`,
+        );
+      }
+      const [g, a] = await Promise.all([api.gameDetail(gameId), api.gameAchievements(gameId)]);
+      setGame(g);
+      setAchs(a);
+    } catch (e) {
+      window.alert(e instanceof Error ? e.message : "Import failed.");
+    } finally {
+      setImportingCatalog(false);
     }
   }
 
@@ -265,6 +301,17 @@ export function GameDetailPage() {
                 >
                   <RefreshCw size={14} className={refreshingGuides ? "animate-spin" : ""} />
                   Guide links
+                </button>
+              )}
+              {user.is_admin && game && game.platform === "xbox" && (
+                <button
+                  onClick={importExophaseCatalog}
+                  disabled={importingCatalog}
+                  title="Fetch the full locked+unlocked catalog (with icons) from Exophase — for legacy Xbox 360 titles, Xbox's own API only ever confirms earned achievements"
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-line/50 bg-ink-900/50 px-3 py-2 text-sm text-muted backdrop-blur-sm transition hover:text-slate-200 disabled:opacity-50"
+                >
+                  <DownloadCloud size={14} className={importingCatalog ? "animate-pulse" : ""} />
+                  Import full catalog
                 </button>
               )}
             </div>

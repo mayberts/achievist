@@ -2109,6 +2109,90 @@ async def exophase_import_icons(payload: dict, admin: dict = Depends(require_adm
     return {"game_name": game_name, "achievements_found": len(rows), "icons_updated": updated, "achievements_created": created}
 
 
+@app.post("/api/games/{platform_game_id}/import-exophase-catalog")
+async def import_exophase_catalog(
+    platform_game_id: int, payload: dict | None = None, admin: dict = Depends(require_admin),
+):
+    """
+    Backfill the full locked+unlocked achievement catalog (with icons) for
+    one Xbox 360 game, scraped directly from Exophase's public game page.
+
+    Xbox's legacy v1 achievements API has no "list everything, locked or
+    not" call, so native sync only ever creates a row for an achievement
+    it's confirmed earned — a title can be stuck showing only a handful of
+    achievements out of its real total until this runs. Optional body
+    {"alt_title": str} — the game's own name is tried first; pass this if
+    that doesn't match Exophase's listing for it (e.g. a name that differs
+    slightly from Xbox's own).
+    """
+    from app.platforms.exophase import fetch_game_page_awards, _to_slug, _to_int, _to_float
+
+    pool = await db.get_pool()
+    async with pool.connection() as conn:
+        game = await _fetchrow(
+            conn, "SELECT name FROM platform_games WHERE id = %s AND platform = 'xbox'", platform_game_id,
+        )
+        if not game:
+            raise HTTPException(status_code=404, detail="No xbox game with that id")
+
+        existing = await _fetch(
+            conn, "SELECT name FROM achievements WHERE platform_game_id = %s", platform_game_id,
+        )
+        existing_slugs = {_to_slug(a["name"]) for a in existing}
+
+        owner_ids = [
+            r["linked_account_id"] for r in await _fetch(
+                conn,
+                "SELECT DISTINCT ug.linked_account_id FROM user_games ug "
+                "JOIN linked_accounts la ON la.id = ug.linked_account_id "
+                "WHERE ug.platform_game_id = %s AND la.platform = 'xbox'",
+                platform_game_id,
+            )
+        ]
+        if not owner_ids:
+            return {"error": "No xbox account owns this game — nothing to attach imported rows to."}
+
+    alt_title = (payload or {}).get("alt_title")
+    candidate_titles = [game["name"]] + ([alt_title] if alt_title else [])
+
+    awards: list[dict] = []
+    used_slug = None
+    for title in candidate_titles:
+        exo_slug = f"{_to_slug(title)}-xbox-360"
+        awards = await fetch_game_page_awards(exo_slug)
+        if awards:
+            used_slug = exo_slug
+            break
+
+    if not awards:
+        return {
+            "error": f"No Exophase awards found for '{game['name']}'. "
+                     f"Check the game's exact title on exophase.com and retry with {{\"alt_title\": \"...\"}}.",
+            "tried": [f"{_to_slug(t)}-xbox-360" for t in candidate_titles],
+        }
+
+    created = 0
+    async with pool.connection() as conn:
+        for award in awards:
+            slug = _to_slug(award["name"])
+            if slug in existing_slugs:
+                continue
+            synth_id = f"exo-{slug}"
+            ach_id = await db.upsert_achievement(
+                conn, platform_game_id, synth_id, award["name"],
+                award.get("description"), award.get("icon"),
+                _to_int(award.get("points")), _to_float(award.get("rarity_pct")),
+            )
+            for linked_id in owner_ids:
+                await db.upsert_user_achievement(conn, linked_id, ach_id, False, None)
+            created += 1
+
+    return {
+        "game_name": game["name"], "exo_slug": used_slug,
+        "awards_found": len(awards), "achievements_created": created,
+    }
+
+
 @app.post("/api/hltb-refresh", status_code=202)
 async def hltb_refresh(admin: dict = Depends(require_admin)):
     """Reset all HLTB data and re-enrich from scratch."""
