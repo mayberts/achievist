@@ -148,6 +148,10 @@ export const api = {
   gameDetail: (id: number) => get<GameDetail>(`/api/games/${id}`),
   gameAchievements: (id: number) => get<Achievement[]>(`/api/games/${id}/achievements`),
   refreshGuideLinks: (id: number) => send<{ guide_url: string | null }>(`/api/games/${id}/refresh-guide-links`, "POST"),
+  importExophaseCatalog: (id: number, altTitle?: string) =>
+    send<{ error?: string; game_name?: string; exo_slug?: string; awards_found?: number; achievements_created?: number }>(
+      `/api/games/${id}/import-exophase-catalog`, "POST", altTitle ? { alt_title: altTitle } : undefined,
+    ),
 
   platforms: () => get<PlatformSchema[]>("/api/platforms"),
   accounts: () => get<Account[]>("/api/accounts"),
